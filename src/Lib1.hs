@@ -17,7 +17,6 @@ type Database = [(TableName, DataFrame)]
 
 -- Your code modifications go below this comment
 
-
 toLowerCase :: String -> String
 toLowerCase [] = []
 toLowerCase (x:xs)
