@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Lib1
   ( parseSelectAllStatement,
@@ -17,7 +18,6 @@ type Database = [(TableName, DataFrame)]
 
 -- Your code modifications go below this comment
 
-
 toLowerCase :: String -> String
 toLowerCase [] = []
 toLowerCase (x:xs)
@@ -28,7 +28,6 @@ toLowerCase (x:xs)
 findTableByName :: Database -> String -> Maybe DataFrame
 findTableByName db tableName = lookup (toLowerCase tableName) db
 
-
 -- 2) implement the function which parses a "select * from ..."
 -- sql statement and extracts a table name from the statement
 parseSelectAllStatement :: String -> Either ErrorMessage TableName
@@ -36,8 +35,32 @@ parseSelectAllStatement _ = error "parseSelectAllStatement not implemented"
 
 -- 3) implement the function which validates tables: checks if
 -- columns match value types, if rows sizes match columns,..
+
 validateDataFrame :: DataFrame -> Either ErrorMessage ()
-validateDataFrame _ = error "validateDataFrame ot implemented"
+validateDataFrame (DataFrame cols rows)
+  | not checkRowSizes = Left "Rows and columns do not match in size"
+  | not (checkValueTypes (DataFrame cols rows)) = Left "There is a type mismatch between column types and values"
+  | otherwise = Right ()
+  where
+    checkRowSizes :: Bool
+    checkRowSizes = all (\row -> length row == length cols) rows
+
+    checkValueTypes :: DataFrame -> Bool
+    checkValueTypes dataFrame = checkColumnValuePairs (zipColumnsAndValues dataFrame)
+
+    checkColumnValuePairs :: [(Column, Value)] -> Bool
+    checkColumnValuePairs [] = True
+    checkColumnValuePairs ((column, value) : rest) =
+      case (column, value) of
+        (Column _ IntegerType, IntegerValue _) -> checkColumnValuePairs rest
+        (Column _ StringType, StringValue _) -> checkColumnValuePairs rest
+        (Column _ BoolType, BoolValue _) -> checkColumnValuePairs rest
+        (_, NullValue) -> checkColumnValuePairs rest
+        _ -> False
+
+    zipColumnsAndValues :: DataFrame -> [(Column, Value)]
+    zipColumnsAndValues (DataFrame cols rows) =
+      concatMap (zip cols) rows
 
 -- 4) implement the function which renders a given data frame
 -- as ascii-art table (use your imagination, there is no "correct"
@@ -61,7 +84,7 @@ maxColumnWidths (DataFrame columns rows) =
 -- 4) Implement the function which renders a given data frame
 -- as ascii-art table
 renderDataFrameAsTable :: Integer -> DataFrame -> String
-renderDataFrameAsTable maxWidth (DataFrame columns rows) = 
+renderDataFrameAsTable maxWidth (DataFrame columns rows) =
   let widths = maxColumnWidths (DataFrame columns rows)
       adjustedWidths = adjustWidths widths maxWidth
   in unlines $ columnHeaders adjustedWidths columns : map (renderRow adjustedWidths) rows
@@ -69,10 +92,9 @@ renderDataFrameAsTable maxWidth (DataFrame columns rows) =
     adjustWidths widths maxWidth =
       let totalWidth = sum widths + length columns + 1
       in if totalWidth > fromIntegral maxWidth then map (\w -> w - (totalWidth - fromIntegral maxWidth) `div` length widths) widths else widths
-    
+
     columnHeaders widths columns = '|' : concatMap (\(Column name _, width) -> padRight width name ++ "|") (zip columns widths)
-    
+
     renderRow widths values = '|' : concatMap (\(value, width) -> padRight width (valueToString value) ++ "|") (zip values widths)
-    
+
     padRight width str = str ++ replicate (width - length str) ' '
-    
