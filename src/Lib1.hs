@@ -1,9 +1,5 @@
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# HLINT ignore "Eta reduce" #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
-{-# HLINT ignore "Use isAsciiUpper" #-}
-{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Lib1
   ( parseSelectAllStatement,
@@ -31,7 +27,6 @@ toLowerCase (x:xs)
 -- in provided Database list
 findTableByName :: Database -> String -> Maybe DataFrame
 findTableByName db tableName = lookup (toLowerCase tableName) db
-
 
 -- 2) implement the function which parses a "select * from ..."
 -- sql statement and extracts a table name from the statement
@@ -81,7 +76,7 @@ valueToString NullValue = "NULL"
 -- Utility function to calculate max width of each column
 maxColumnWidths :: DataFrame -> [Int]
 maxColumnWidths (DataFrame columns rows) =
-  zipWith (curry (\(Column name _, values) -> maximum (length name : map (length . valueToString) values))) columns (transpose rows)
+  map (\(Column name _, values) -> maximum (length name : map (length . valueToString) values)) $ zip columns (transpose rows)
   where
     transpose [] = repeat []
     transpose (x:xs) = zipWith (:) x (transpose xs)
