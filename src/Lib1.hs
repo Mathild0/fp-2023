@@ -30,8 +30,19 @@ findTableByName db tableName = lookup (toLowerCase tableName) db
 
 -- 2) implement the function which parses a "select * from ..."
 -- sql statement and extracts a table name from the statement
+removeLastSemicolon :: String -> String
+removeLastSemicolon [] = []
+removeLastSemicolon a
+  | last a == ';' = init a
+  | otherwise = a
+
 parseSelectAllStatement :: String -> Either ErrorMessage TableName
-parseSelectAllStatement _ = error "parseSelectAllStatement not implemented"
+parseSelectAllStatement [] = Left "Empty input"
+parseSelectAllStatement input = case toLowerCase input of
+  ('s':'e':'l':'e':'c':'t':' ':'*':' ':'f':'r':'o':'m':' ': name) 
+    | removeLastSemicolon name == [] -> Left "Invalid input"
+    | otherwise -> Right (removeLastSemicolon name)
+  _ -> Left "Invalid input"
 
 -- 3) implement the function which validates tables: checks if
 -- columns match value types, if rows sizes match columns,..
