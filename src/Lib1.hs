@@ -37,12 +37,11 @@ removeLastSemicolon a
   | otherwise = a
 
 parseSelectAllStatement :: String -> Either ErrorMessage TableName
-parseSelectAllStatement [] = Left "Empty input"
-parseSelectAllStatement input = case toLowerCase input of
-  ('s':'e':'l':'e':'c':'t':' ':'*':' ':'f':'r':'o':'m':' ': name) 
-    | removeLastSemicolon name == [] -> Left "Invalid input"
-    | otherwise -> Right (removeLastSemicolon name)
-  _ -> Left "Invalid input"
+parseSelectAllStatement a = case words (toLowerCase a) of
+    ["select", "*", "from", name]
+        | null (removeLastSemicolon name) -> Left "Invalid input"
+        | otherwise -> Right (removeLastSemicolon name)
+    _ -> Left "Invalid input"
 
 -- 3) implement the function which validates tables: checks if
 -- columns match value types, if rows sizes match columns,..
