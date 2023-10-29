@@ -1,11 +1,13 @@
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-unused-matches #-}
 
 module Lib2
   ( calculateSum,
     calculateMinimum,
     parseStatement,
     executeStatement,
+    ColumnName,
     ParsedStatement(..),
     AggregateFunction(..),
     Value(..)
@@ -50,7 +52,7 @@ instance Eq AggregateFunction where
 parseStatement :: String -> Either ErrorMessage ParsedStatement
 parseStatement input =
   let tokens = words input
-      lowercaseToken t = if t `elem` ["select", "show", "table", "from", "min", "max", "sum"] then map toLower t else t
+      lowercaseToken t = if t `elem` ["select", "show", "tables", "table", "from", "min", "max", "sum"] then map toLower t else t
       normalizedTokens = map lowercaseToken tokens
   in case normalizedTokens of
     ["show", "tables"] -> Right ShowTables
@@ -74,19 +76,22 @@ executeStatement ShowTables =
 executeStatement (ShowTable tableName) = 
   case findTableByName database tableName of
     Just table -> Right table
-
     Nothing -> Left "Table not found"
 
 executeStatement (SelectSumStatement Sum column tableName) =
   case findTableByName database tableName of
-    Just (DataFrame columns rows) -> do
+    Just (DataFrame columns rows) -> 
+      
+      case findColumnIndex column columns of
+        Just idx -> do
 
-      let values = extractColumnValues column columns rows
+          let values = extractColumnValues column columns rows
 
-      case calculateSum values of
-        Just sumValue -> Right $ DataFrame [Column "Sum" IntegerType] [[IntegerValue sumValue]]
-        
-        Nothing -> Left "Column not found"
+          case calculateSum values of
+            Just sumValue -> Right $ DataFrame [Column "Sum" IntegerType] [[IntegerValue sumValue]]
+            Nothing -> Left "Column not found or invalid for sum statement"
+            
+        Nothing -> Left "Column not found or invalid for sum statement"
     
     Nothing -> Left "Table not found"
 

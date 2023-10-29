@@ -9,7 +9,7 @@ module Lib1
   )
 where
 
-import DataFrame (DataFrame (..), Row, Column (..), ColumnType (..), Value (..))
+import DataFrame (DataFrame (..), Column (..), ColumnType (..), Value (..))
 import InMemoryTables (TableName)
 
 type ErrorMessage = String

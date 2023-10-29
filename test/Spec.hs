@@ -1,11 +1,12 @@
 {-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
+{-# LANGUAGE BlockArguments #-}
 import Data.Either
 import Data.Maybe ()
 import InMemoryTables qualified as D
 import Lib1
 import Test.Hspec
 import Lib2
-import DataFrame (Value(IntegerValue))
+import DataFrame
 
 main :: IO ()
 main = hspec $ do
@@ -42,10 +43,14 @@ main = hspec $ do
       Lib1.renderDataFrameAsTable 100 (snd D.tableEmployees) `shouldSatisfy` not . null
 
   describe "Lib2.parseStatement" $ do
-    it "parses SHOW TABLES statement" $ do
+    it "parses show tables statement" $ do
       Lib2.parseStatement "show tables" `shouldBe` Right Lib2.ShowTables
-    it "parses SHOW TABLE name statement" $ do
+    it "parses SHOW TABLES statement" $ do
+      Lib2.parseStatement "SHOW TABLES" `shouldBe` Right Lib2.ShowTables
+    it "parses show table name statement" $ do
       Lib2.parseStatement "show table employees" `shouldBe` Right (Lib2.ShowTable "employees")
+    it "parses SHOW TABLE name statement" $ do
+      Lib2.parseStatement "SHOW TABLE employees" `shouldBe` Right (Lib2.ShowTable "employees")
 
   describe "Lib2.calculateMinimum" $ do
     it "calculates the minimum with a list of IntegerValues" $ do
@@ -68,3 +73,27 @@ main = hspec $ do
     it "calculates the sum of an empty list" $ do
       let values = []
       Lib2.calculateSum values `shouldBe` Just 0
+
+  describe "Lib2.executeStatement" $ do
+    it "returns the sum for a valid SelectSumStatement" $ do
+      let result = executeStatement (SelectSumStatement Sum "id" "employees")
+      result `shouldBe` Right (DataFrame [Column "Sum" IntegerType] [[IntegerValue 3]])
+    it "handles an invalid aggregation column for sum" $ do
+      let result = executeStatement (SelectSumStatement Sum "invalid_column" "employees")
+      result `shouldSatisfy` isLeft
+    it "handles an invalid table name for sum" $ do
+      let result = executeStatement (SelectSumStatement Sum "id" "invalid_tableName")
+      result `shouldSatisfy` isLeft
+    
+    it "returns the min for a valid SelectMinStatement" $ do
+      let result = executeStatement (SelectMinStatement Min "id" "employees")
+      result `shouldBe` Right (DataFrame [Column "Result" IntegerType] [[IntegerValue 1]])
+    it "returns the min for a valid SelectMinStatement" $ do
+      let result = executeStatement (SelectMinStatement Min "name" "employees")
+      result `shouldBe` Right (DataFrame [Column "Result" StringType] [[StringValue "Ed"]])
+    it "handles an invalid aggregation column for min" $ do
+      let result = executeStatement (SelectMinStatement Min "invalid_column" "employees")
+      result `shouldSatisfy` isLeft
+    it "handles an invalid table name for min" $ do
+      let result = executeStatement (SelectMinStatement Min "id" "invalid_tableName")
+      result `shouldSatisfy` isLeft
