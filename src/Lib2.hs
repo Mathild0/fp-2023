@@ -1,7 +1,9 @@
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Lib2
-  ( calculateMinimum,
+  ( calculateSum,
+    calculateMinimum,
     parseStatement,
     executeStatement,
     ParsedStatement(..),
@@ -14,9 +16,9 @@ import DataFrame (DataFrame(..), Column(..), ColumnType(..), Value(..), Row)
 import InMemoryTables (TableName, database)
 import Lib1 (findTableByName)
 import Data.Char (toLower)
-import Data.String (IsString)
-import Data.Maybe (fromMaybe)
-import Data.List (find, findIndex)
+import Data.String ()
+import Data.Maybe ()
+import Data.List (findIndex)
 
 type ErrorMessage = String
 type Database = [(TableName, DataFrame)]
@@ -84,7 +86,7 @@ executeStatement (SelectSumStatement Sum column tableName) =
       case calculateSum values of
         Just sumValue -> Right $ DataFrame [Column "Sum" IntegerType] [[IntegerValue sumValue]]
         
-        Nothing -> Left "Invalid aggregation"
+        Nothing -> Left "Column not found"
     
     Nothing -> Left "Table not found"
 

@@ -1,9 +1,11 @@
+{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 import Data.Either
 import Data.Maybe ()
 import InMemoryTables qualified as D
 import Lib1
 import Test.Hspec
 import Lib2
+import DataFrame (Value(IntegerValue))
 
 main :: IO ()
 main = hspec $ do
@@ -41,7 +43,7 @@ main = hspec $ do
 
   describe "Lib2.parseStatement" $ do
     it "parses SHOW TABLES statement" $ do
-      Lib2.parseStatement "show tables" `shouldBe` Right (Lib2.ShowTables)
+      Lib2.parseStatement "show tables" `shouldBe` Right Lib2.ShowTables
     it "parses SHOW TABLE name statement" $ do
       Lib2.parseStatement "show table employees" `shouldBe` Right (Lib2.ShowTable "employees")
 
@@ -51,4 +53,18 @@ main = hspec $ do
       Lib2.calculateMinimum values `shouldBe` IntegerValue 1
     it "returns NullValue for a list with mixed types" $ do
       let values = [IntegerValue 3, StringValue "hello", BoolValue True]
-      Lib2.calculateMinimum values `shouldBe` NullValue  
+      Lib2.calculateMinimum values `shouldBe` NullValue
+
+  describe "Lib2.calculateSum" $ do
+    it "calculates the sum of IntegerValues in a specified column" $ do
+      let values = [IntegerValue 1, IntegerValue 2, IntegerValue 3]
+      Lib2.calculateSum values `shouldBe` Just 6
+    it "returns Nothing for a list with mixed values' types" $ do
+      let values = [IntegerValue 1, StringValue "test", BoolValue False]
+      Lib2.calculateSum values `shouldBe` Nothing
+    it "returns Nothing for a list with no IntegerValue elements" $ do
+      let values = [StringValue "1", StringValue "test", StringValue "False"]
+      Lib2.calculateSum values `shouldBe` Nothing
+    it "calculates the sum of an empty list" $ do
+      let values = []
+      Lib2.calculateSum values `shouldBe` Just 0
