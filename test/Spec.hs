@@ -3,6 +3,7 @@ import Data.Maybe ()
 import InMemoryTables qualified as D
 import Lib1
 import Test.Hspec
+import Lib2
 
 main :: IO ()
 main = hspec $ do
@@ -15,6 +16,7 @@ main = hspec $ do
       Lib1.findTableByName D.database "employees" `shouldBe` Just (snd D.tableEmployees)
     it "can find by case-insensitive name" $ do
       Lib1.findTableByName D.database "employEEs" `shouldBe` Just (snd D.tableEmployees)
+
   describe "Lib1.parseSelectAllStatement" $ do
     it "handles empty input" $ do
       Lib1.parseSelectAllStatement "" `shouldSatisfy` isLeft
@@ -22,6 +24,7 @@ main = hspec $ do
       Lib1.parseSelectAllStatement "select from dual" `shouldSatisfy` isLeft
     it "returns table name from correct queries" $ do
       Lib1.parseSelectAllStatement "selecT * from dual;" `shouldBe` Right "dual"
+
   describe "Lib1.validateDataFrame" $ do
     it "finds types mismatch" $ do
       Lib1.validateDataFrame (snd D.tableInvalid1) `shouldSatisfy` isLeft
@@ -31,6 +34,21 @@ main = hspec $ do
       Lib1.validateDataFrame (snd D.tableInvalid1) `shouldNotBe` Lib1.validateDataFrame (snd D.tableInvalid2)
     it "passes valid tables" $ do
       Lib1.validateDataFrame (snd D.tableWithNulls) `shouldBe` Right ()
+
   describe "Lib1.renderDataFrameAsTable" $ do
     it "renders a table" $ do
       Lib1.renderDataFrameAsTable 100 (snd D.tableEmployees) `shouldSatisfy` not . null
+
+  describe "Lib2.parseStatement" $ do
+    it "parses SHOW TABLES statement" $ do
+      Lib2.parseStatement "show tables" `shouldBe` Right (Lib2.ShowTables)
+    it "parses SHOW TABLE name statement" $ do
+      Lib2.parseStatement "show table employees" `shouldBe` Right (Lib2.ShowTable "employees")
+
+  describe "Lib2.calculateMinimum" $ do
+    it "calculates the minimum with a list of IntegerValues" $ do
+      let values = [IntegerValue 3, IntegerValue 1, IntegerValue 2]
+      Lib2.calculateMinimum values `shouldBe` IntegerValue 1
+    it "returns NullValue for a list with mixed types" $ do
+      let values = [IntegerValue 3, StringValue "hello", BoolValue True]
+      Lib2.calculateMinimum values `shouldBe` NullValue  
