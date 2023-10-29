@@ -66,7 +66,27 @@ columnName (Column name _) = name
 
 executeStatement :: ParsedStatement -> Either ErrorMessage DataFrame
 
-executeStatement ShowTables = Right $ DataFrame [Column "Tables" StringType] (map (\(name, _) -> [StringValue name]) database)
+executeStatement ShowTables = 
+  Right $ DataFrame [Column "Tables" StringType] (map (\(name, _) -> [StringValue name]) database)
+
+executeStatement (ShowTable tableName) = 
+  case findTableByName database tableName of
+    Just table -> Right table
+
+    Nothing -> Left "Table not found"
+
+executeStatement (SelectSumStatement Sum column tableName) =
+  case findTableByName database tableName of
+    Just (DataFrame columns rows) -> do
+
+      let values = extractColumnValues column columns rows
+
+      case calculateSum values of
+        Just sumValue -> Right $ DataFrame [Column "Sum" IntegerType] [[IntegerValue sumValue]]
+        
+        Nothing -> Left "Invalid aggregation"
+    
+    Nothing -> Left "Table not found"
 
 executeStatement (SelectMinStatement Min columnName tableName) =
   case lookup tableName database of
@@ -89,19 +109,8 @@ executeStatement (SelectMinStatement Min columnName tableName) =
 
     Nothing -> Left "Table not found"
 
-executeStatement (SelectSumStatement Sum column tableName) =
-  case findTableByName database tableName of
-    Nothing -> Left "Table not found"
-
-    Just (DataFrame columns rows) -> do
-
-      let values = extractColumnValues column columns rows
-
-      case calculateSum values of
-        Nothing -> Left "Invalid aggregation"
-        Just sumValue -> Right $ DataFrame [Column "Sum" IntegerType] [[IntegerValue sumValue]]
-
-executeStatement _ = Left "Not implemented: executeStatement"
+executeStatement _ = 
+  Left "Not implemented: executeStatement"
 
 -----------------------------------------------------------
 -- Helper function to check if a Value is of a valid type
@@ -140,8 +149,6 @@ getColumnType value =
     BoolValue _    -> BoolType
     StringValue _  -> StringType
     _              -> StringType
-
-----------------------------------------------------------------
 
 extractColumnValues :: ColumnName -> [Column] -> [Row] -> [Value]
 extractColumnValues columnName columns rows =
