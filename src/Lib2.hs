@@ -5,7 +5,7 @@ module Lib2
     parseStatement,
     executeStatement,
     ParsedStatement(..),
-    AggregateFunction(..), 
+    AggregateFunction(..),
     Value(..)
   )
 where
@@ -16,9 +16,7 @@ import Lib1 (findTableByName)
 import Data.Char (toLower)
 import Data.String (IsString)
 import Data.Maybe (fromMaybe)
-import Data.List (find)
-import Data.List (findIndex)
-
+import Data.List (find, findIndex)
 
 type ErrorMessage = String
 type Database = [(TableName, DataFrame)]
@@ -29,7 +27,7 @@ data ParsedStatement
   = ParsedStatement
   | SelectSumStatement AggregateFunction ColumnName TableName
   | SelectMinStatement AggregateFunction ColumnName TableName
-  | SelectMaxStatement AggregateFunction ColumnName TableName 
+  | SelectMaxStatement AggregateFunction ColumnName TableName
   | ShowTables
   | ShowTable TableName
   deriving (Show, Eq)
@@ -67,12 +65,13 @@ columnName :: Column -> String
 columnName (Column name _) = name
 
 executeStatement :: ParsedStatement -> Either ErrorMessage DataFrame
+
 executeStatement ShowTables = Right $ DataFrame [Column "Tables" StringType] (map (\(name, _) -> [StringValue name]) database)
 
 executeStatement (SelectMinStatement Min columnName tableName) =
   case lookup tableName database of
     Just (DataFrame columns rows) -> do
-      
+
       let columnIndex = findColumnIndex columnName columns
 
       case columnIndex of
@@ -90,19 +89,21 @@ executeStatement (SelectMinStatement Min columnName tableName) =
 
     Nothing -> Left "Table not found"
 
-executeStatement (SelectSumStatement Sum column tableName) = 
+executeStatement (SelectSumStatement Sum column tableName) =
   case findTableByName database tableName of
     Nothing -> Left "Table not found"
-    
+
     Just (DataFrame columns rows) -> do
+
       let values = extractColumnValues column columns rows
-      
+
       case calculateSum values of
         Nothing -> Left "Invalid aggregation"
         Just sumValue -> Right $ DataFrame [Column "Sum" IntegerType] [[IntegerValue sumValue]]
 
 executeStatement _ = Left "Not implemented: executeStatement"
 
+-----------------------------------------------------------
 -- Helper function to check if a Value is of a valid type
 isValidValue :: Value -> Bool
 isValidValue value =
@@ -116,22 +117,20 @@ calculateMinimum :: [Value] -> Value
 calculateMinimum values =
   let validValues = filter isValidValue values in
   case validValues of
-    [] -> NullValue  
-    (x:xs) -> foldr minVal x xs  
+    [] -> NullValue
+    (x:xs) -> foldr minVal x xs
 
 -- A function to determine the "minimum" of two Value items, considering different data types
 minVal :: Value -> Value -> Value
 minVal (IntegerValue a) (IntegerValue b) = IntegerValue (min a b)
 minVal (StringValue a) (StringValue b) = StringValue (min a b)  -- lexicographical comparison
-minVal (BoolValue a) (BoolValue b) = BoolValue (min a b)  
-minVal _ _ = NullValue  
+minVal (BoolValue a) (BoolValue b) = BoolValue (min a b)
+minVal _ _ = NullValue
 
 -- Helper function to find the index of a column by name
 findColumnIndex :: ColumnName -> [Column] -> Maybe Int
-findColumnIndex columnName columns =
-  case findIndex (\(Column name _) -> name == columnName) columns of
-    Just index -> Just index
-    Nothing -> Nothing
+findColumnIndex columnName =
+  findIndex (\ (Column name _) -> name == columnName) 
 
 -- Helper function to determine the column type based on a Value
 getColumnType :: Value -> ColumnType
@@ -140,26 +139,15 @@ getColumnType value =
     IntegerValue _ -> IntegerType
     BoolValue _    -> BoolType
     StringValue _  -> StringType
-    _              -> StringType 
-
-columnName :: Column -> String
-columnName (Column name _) = name
+    _              -> StringType
 
 ----------------------------------------------------------------
 
 extractColumnValues :: ColumnName -> [Column] -> [Row] -> [Value]
-extractColumnValues columnName columns rows = 
-  case findColumnIndex columnName columns of 
+extractColumnValues columnName columns rows =
+  case findColumnIndex columnName columns of
     Just index -> map (!! index) rows
     Nothing -> []
-
-findColumnIndex :: ColumnName -> [Column] -> Maybe Int
-findColumnIndex name columns = go columns 0
-  where 
-    go [] _ = Nothing
-    go (Column columnName _ : rest) index
-      | name == columnName = Just index
-      | otherwise = go rest (index + 1)
 
 calculateSum :: [Value] -> Maybe Integer
 calculateSum values = case traverse extractIntegerValue values of
