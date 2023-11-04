@@ -137,10 +137,6 @@ executeStatement (SelectColumnListStatement columns tableName) =
 
 executeStatement _ = Left "Not implemented: executeStatement"
 
-executeStatement _ = 
-  Left "Not implemented: executeStatement"
-
------------------------------------------------------------
 -- Helper function to check if a Value is of a valid type
 isValidValue :: Value -> Bool
 isValidValue value =
@@ -177,8 +173,6 @@ getColumnType value =
     BoolValue _    -> BoolType
     StringValue _  -> StringType
     _              -> StringType 
-
-------------------------------
 
 strip :: String -> String
 strip = f . f

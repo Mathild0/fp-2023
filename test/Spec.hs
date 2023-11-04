@@ -42,6 +42,8 @@ main = hspec $ do
     it "renders a table" $ do
       Lib1.renderDataFrameAsTable 100 (snd D.tableEmployees) `shouldSatisfy` not . null
 
+-----------------------------------------------------------------------------------
+
   describe "Lib2.parseStatement" $ do
     it "parses show tables statement" $ do
       Lib2.parseStatement "show tables" `shouldBe` Right Lib2.ShowTables
@@ -52,7 +54,9 @@ main = hspec $ do
     it "parses SHOW TABLE name statement" $ do
       Lib2.parseStatement "SHOW TABLE employees" `shouldBe` Right (Lib2.ShowTable "employees")
     it "handles an invalid column list" $ do
-      Lib2.parseStatement ",id ,,name,"`shouldSatisfy` isLeft
+      Lib2.parseStatement ",id ,,name," `shouldSatisfy` isLeft
+    it "handles a valid sum request statement" $ do
+      Lib2.parseStatement "select sum ( id ) from employees" `shouldBe` Right (SelectSumStatement Sum "id" "employees")
 
   describe "Lib2.calculateMinimum" $ do
     it "calculates the minimum with a list of IntegerValues" $ do
