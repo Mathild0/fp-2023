@@ -51,6 +51,8 @@ main = hspec $ do
       Lib2.parseStatement "show table employees" `shouldBe` Right (Lib2.ShowTable "employees")
     it "parses SHOW TABLE name statement" $ do
       Lib2.parseStatement "SHOW TABLE employees" `shouldBe` Right (Lib2.ShowTable "employees")
+    it "handles an invalid column list" $ do
+      Lib2.parseStatement ",id ,,name,"`shouldSatisfy` isLeft
 
   describe "Lib2.calculateMinimum" $ do
     it "calculates the minimum with a list of IntegerValues" $ do
@@ -58,7 +60,15 @@ main = hspec $ do
       Lib2.calculateMinimum values `shouldBe` IntegerValue 1
     it "returns NullValue for a list with mixed types" $ do
       let values = [IntegerValue 3, StringValue "hello", BoolValue True]
-      Lib2.calculateMinimum values `shouldBe` NullValue
+      Lib2.calculateMinimum values `shouldBe` NullValue  
+
+  describe "Lib2.selectColumns" $ do
+    it "selects specified columns from a table" $ do
+      Lib2.selectColumns ["id", "name"]  (snd D.tableEmployees) `shouldSatisfy` isRight
+    it "handles an empty list of columns" $ do
+      Lib2.selectColumns [] (snd D.tableEmployees) `shouldSatisfy` isLeft
+    it "handles a list with no valid columns" $ do
+      Lib2.selectColumns ["invalidColumnName, invalidColumnName2"] (snd D.tableEmployees) `shouldSatisfy` isLeft
 
   describe "Lib2.calculateSum" $ do
     it "calculates the sum of IntegerValues in a specified column" $ do
@@ -97,3 +107,8 @@ main = hspec $ do
     it "handles an invalid table name for min" $ do
       let result = executeStatement (SelectMinStatement Min "id" "invalid_tableName")
       result `shouldSatisfy` isLeft
+    
+    it "returns a table with selected columns" $ do
+      let input = ["id", "name", "surname"]
+      let parsedStatement = SelectColumnListStatement input (fst D.tableEmployees)
+      Lib2.executeStatement parsedStatement `shouldSatisfy` isRight

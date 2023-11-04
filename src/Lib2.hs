@@ -7,6 +7,7 @@ module Lib2
     calculateMinimum,
     parseStatement,
     executeStatement,
+    selectColumns,
     ColumnName,
     ParsedStatement(..),
     AggregateFunction(..),
@@ -17,10 +18,10 @@ where
 import DataFrame (DataFrame(..), Column(..), ColumnType(..), Value(..), Row)
 import InMemoryTables (TableName, database)
 import Lib1 (findTableByName)
-import Data.Char (toLower)
-import Data.String ()
-import Data.Maybe ()
-import Data.List (findIndex)
+import Data.Char (toLower, isSpace)
+import Data.String (IsString)
+import Data.Maybe (fromMaybe, mapMaybe)
+import Data.List (findIndex, find, isSuffixOf, isPrefixOf, group, elemIndex)
 
 type ErrorMessage = String
 type Database = [(TableName, DataFrame)]
@@ -32,6 +33,7 @@ data ParsedStatement
   | SelectSumStatement AggregateFunction ColumnName TableName
   | SelectMinStatement AggregateFunction ColumnName TableName
   | SelectMaxStatement AggregateFunction ColumnName TableName
+  | SelectColumnListStatement [String] TableName 
   | ShowTables
   | ShowTable TableName
   deriving (Show, Eq)
@@ -52,7 +54,8 @@ instance Eq AggregateFunction where
 parseStatement :: String -> Either ErrorMessage ParsedStatement
 parseStatement input =
   let tokens = words input
-      lowercaseToken t = if t `elem` ["select", "show", "tables", "table", "from", "min", "max", "sum"] then map toLower t else t
+      lowercaseKeywords = ["select", "show", "table", "tables", "from", "min", "max", "sum"]
+      lowercaseToken t = if map toLower t `elem` lowercaseKeywords then map toLower t else t
       normalizedTokens = map lowercaseToken tokens
   in case normalizedTokens of
     ["show", "tables"] -> Right ShowTables
@@ -63,6 +66,14 @@ parseStatement input =
       Right (SelectMinStatement Min column table)
     ["select", "max", "(", column, ")", "from", table] ->
       Right (SelectMaxStatement Max column table)
+    ("select" : rest) ->
+      case break (== "from") rest of
+        (columnPart, "from" : tablePart) ->
+          (if checkColumnList (unwords columnPart) then (do
+          let tableName = unwords tablePart
+          let column = parseColumnList (unwords columnPart)
+          Right (SelectColumnListStatement column tableName)) else Left "Invalid statement")
+        _ -> Left "Invalid statement"
     _ -> Left "Invalid statement"
 
 columnName :: Column -> String
@@ -116,6 +127,16 @@ executeStatement (SelectMinStatement Min columnName tableName) =
 
     Nothing -> Left "Table not found"
 
+executeStatement (SelectColumnListStatement columns tableName) =
+  case lookup tableName database of
+    Just table ->
+      case selectColumns columns table of
+        Left e -> Left e
+        Right selectedDf -> Right selectedDf
+    Nothing -> Left "Table not found"
+
+executeStatement _ = Left "Not implemented: executeStatement"
+
 executeStatement _ = 
   Left "Not implemented: executeStatement"
 
@@ -155,7 +176,42 @@ getColumnType value =
     IntegerValue _ -> IntegerType
     BoolValue _    -> BoolType
     StringValue _  -> StringType
-    _              -> StringType
+    _              -> StringType 
+
+------------------------------
+
+strip :: String -> String
+strip = f . f
+   where f = reverse . dropWhile isSpace
+
+parseColumnList :: String -> [String]
+parseColumnList [] = []
+parseColumnList s = case dropWhile (== ',') s of
+  "" -> []
+  s' -> strip w : parseColumnList s''
+    where (w, s'') = break (== ',') s'
+
+checkColumnList :: String -> Bool
+checkColumnList input
+  | "," `isPrefixOf` input || "," `isSuffixOf` input = False
+  | any (\x -> length x > 1 && head x == ',') (group input) = False
+  | otherwise = True
+
+selectColumns :: [String] -> DataFrame -> Either ErrorMessage DataFrame
+selectColumns columns (DataFrame dfColumns dfRows) =
+  let columnIndices = getAllIndexes columns dfColumns
+  in if null columnIndices then Left "No columns were found"
+     else
+        let selectedColumns = map (\x -> dfColumns !! x) columnIndices
+            selectedRows = map (selectCells columnIndices) dfRows
+        in Right (DataFrame selectedColumns selectedRows)
+
+getAllIndexes :: [String] -> [Column] -> [Int]
+getAllIndexes requestedColumns dfColumns =
+  mapMaybe (`elemIndex` map columnName dfColumns) requestedColumns
+
+selectCells :: [Int] -> Row -> [Value]
+selectCells indices row = map (row !!) indices
 
 extractColumnValues :: ColumnName -> [Column] -> [Row] -> [Value]
 extractColumnValues columnName columns rows =
