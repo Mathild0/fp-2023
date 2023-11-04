@@ -32,7 +32,6 @@ data ParsedStatement
   = ParsedStatement
   | SelectSumStatement AggregateFunction ColumnName TableName
   | SelectMinStatement AggregateFunction ColumnName TableName
-  | SelectMaxStatement AggregateFunction ColumnName TableName
   | SelectColumnListStatement [String] TableName 
   | ShowTables
   | ShowTable TableName
@@ -54,7 +53,7 @@ instance Eq AggregateFunction where
 parseStatement :: String -> Either ErrorMessage ParsedStatement
 parseStatement input =
   let tokens = words input
-      lowercaseKeywords = ["select", "show", "table", "tables", "from", "min", "max", "sum"]
+      lowercaseKeywords = ["select", "show", "table", "tables", "from", "min", "sum"]
       lowercaseToken t = if map toLower t `elem` lowercaseKeywords then map toLower t else t
       normalizedTokens = map lowercaseToken tokens
   in case normalizedTokens of
@@ -64,8 +63,6 @@ parseStatement input =
       Right (SelectSumStatement Sum column table)
     ["select", "min", "(", column, ")", "from", table] ->
       Right (SelectMinStatement Min column table)
-    ["select", "max", "(", column, ")", "from", table] ->
-      Right (SelectMaxStatement Max column table)
     ("select" : rest) ->
       case break (== "from") rest of
         (columnPart, "from" : tablePart) ->
@@ -100,9 +97,9 @@ executeStatement (SelectSumStatement Sum column tableName) =
 
           case calculateSum values of
             Just sumValue -> Right $ DataFrame [Column "Sum" IntegerType] [[IntegerValue sumValue]]
-            Nothing -> Left "Column not found or invalid for sum statement"
+            Nothing -> Left "Column not found or an invalid sum statement"
             
-        Nothing -> Left "Column not found or invalid for sum statement"
+        Nothing -> Left "Column not found or an invalid sum statement"
     
     Nothing -> Left "Table not found"
 
