@@ -52,7 +52,7 @@ instance Eq AggregateFunction where
 parseStatement :: String -> Either ErrorMessage ParsedStatement
 parseStatement input =
   let tokens = words input
-      lowercaseToken t = if t `elem` ["select", "show", "table", "from", "min", "max", "sum"] then map toLower t else t
+      lowercaseToken t = if t `elem` ["select", "show", "table", "from", "min", "max", "sum", "where", "and"] then map toLower t else t
       normalizedTokens = map lowercaseToken tokens
   in case normalizedTokens of
     ["show", "tables"] -> Right ShowTables
@@ -77,7 +77,6 @@ executeStatement ShowTables = Right $ DataFrame [Column "Tables" StringType] (ma
 executeStatement (SelectMinStatement Min columnName tableName) =
   case lookup tableName database of
     Just (DataFrame columns rows) -> do
-      
       let columnIndex = findColumnIndex columnName columns
 
       case columnIndex of
@@ -94,7 +93,12 @@ executeStatement (SelectMinStatement Min columnName tableName) =
         Nothing -> Left "Column not found"
 
     Nothing -> Left "Table not found"
+executeStatement (ShowTable tableName) =
+  case lookup tableName database of
+    Just table -> Right table
+    Nothing -> Left "Table not found"
 executeStatement _ = Left "Not implemented: executeStatement"
+
 
 
 -- Helper function to check if a Value is of a valid type
@@ -121,7 +125,6 @@ minVal (BoolValue a) (BoolValue b) = BoolValue (min a b)
 minVal _ _ = NullValue  
 
 
--- Helper function to find the index of a column by name
 findColumnIndex :: ColumnName -> [Column] -> Maybe Int
 findColumnIndex columnName columns =
   case findIndex (\(Column name _) -> name == columnName) columns of
@@ -130,7 +133,7 @@ findColumnIndex columnName columns =
 
 
 
--- Helper function to determine the column type based on a Value
+
 getColumnType :: Value -> ColumnType
 getColumnType value =
   case value of
