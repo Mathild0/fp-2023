@@ -53,10 +53,6 @@ data ParsedCondition
   deriving (Show, Eq)
 
 
-
-
-
-
 data AggregateFunction
   = Sum
   | Min
@@ -272,7 +268,7 @@ parseConditions conditionStr =
 
 parseCondition :: String -> Maybe ParsedCondition
 parseCondition conditionToken
-  | "==" `isSuffixOf` conditionToken = -- Handle "=="
+  | "==" `isSuffixOf` conditionToken = 
       let (column, valueStr) = break (== '=') conditionToken
           value = readValue (drop 2 valueStr) -- drop the '==' part
       in case value of
@@ -329,17 +325,17 @@ matchesCondition (EqualCondition colName value) columns row =
     Nothing  -> False
 
 
--- Implementation of the whereAND function:
+
 whereAND :: String -> Either ErrorMessage DataFrame
 whereAND input =
   case parseStatement input of
-    Right (SelectAndStatement conditions tableName) -> -- Handle SelectAndStatement
+    Right (SelectAndStatement conditions tableName) -> 
       case findTableByName database tableName of
         Just (DataFrame columns rows) ->
           let matchingRows = filter (matchesAllConditions conditions columns) rows
           in Right (DataFrame columns matchingRows)
         Nothing -> Left "Table not found"
-    Right (SelectWhereStatement conditions tableName) -> -- Handle SelectWhereStatement
+    Right (SelectWhereStatement conditions tableName) -> 
       case findTableByName database tableName of
         Just (DataFrame columns rows) ->
           let matchingRows = filter (matchesAllConditions conditions columns) rows
@@ -347,7 +343,7 @@ whereAND input =
         Nothing -> Left "Table not found"
     _ -> Left "Invalid statement"
 
--- Add a new function to filter rows based on boolean conditions
+
 whereBool :: String -> Either ErrorMessage DataFrame
 whereBool input =
   case parseStatement input of
