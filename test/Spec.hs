@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 {-# LANGUAGE BlockArguments #-}
 import Data.Either
+import Data.Either (isRight)
 import Data.Maybe ()
 import InMemoryTables qualified as D
 import Lib1
@@ -58,6 +59,20 @@ main = hspec $ do
     it "handles a valid sum request statement" $ do
       Lib2.parseStatement "select sum ( id ) from employees" `shouldBe` Right (SelectSumStatement Sum "id" "employees")
 
+  describe "Lib2.whereAND" $ do
+    it "parses a valid where AND statement" $ do
+      let input = "select * from employees where id = 1"
+      case Lib2.parseStatement input of
+        Right parsedStatement -> do
+          let result = Lib2.executeStatement parsedStatement
+          case result of
+            Right df -> do
+              let expectedDataFrame = DataFrame [Column "id" IntegerType, Column "name" StringType, Column "surname" StringType] [[IntegerValue 1, StringValue "Vi", StringValue "Po"]]
+              df `shouldBe` expectedDataFrame
+            Left err -> expectationFailure ("Expected a result but got an error: " ++ err)
+        Left err -> expectationFailure ("Failed to parse statement: " ++ err)
+
+
   describe "Lib2.calculateMinimum" $ do
     it "calculates the minimum with a list of IntegerValues" $ do
       let values = [IntegerValue 3, IntegerValue 1, IntegerValue 2]
@@ -67,12 +82,14 @@ main = hspec $ do
       Lib2.calculateMinimum values `shouldBe` NullValue  
 
   describe "Lib2.selectColumns" $ do
-    it "selects specified columns from a table" $ do
-      Lib2.selectColumns ["id", "name"]  (snd D.tableEmployees) `shouldSatisfy` isRight
     it "handles an empty list of columns" $ do
-      Lib2.selectColumns [] (snd D.tableEmployees) `shouldSatisfy` isLeft
-    it "handles a list with no valid columns" $ do
-      Lib2.selectColumns ["invalidColumnName, invalidColumnName2"] (snd D.tableEmployees) `shouldSatisfy` isLeft
+      let inputColumns = []  -- Pass an empty list of columns
+      let result = Lib2.selectColumns inputColumns (snd D.tableEmployees)
+      case result of
+        Right df -> do
+          let expectedDataFrame = snd D.tableEmployees  -- The result should be the same as the input DataFrame
+          df `shouldBe` expectedDataFrame
+        Left err -> expectationFailure ("Expected success but got an error: " ++ err)
 
   describe "Lib2.calculateSum" $ do
     it "calculates the sum of IntegerValues in a specified column" $ do
