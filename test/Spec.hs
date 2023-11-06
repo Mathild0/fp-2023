@@ -133,3 +133,19 @@ main = hspec $ do
       let input = ["id", "name", "surname"]
       let parsedStatement = SelectColumnListStatement input (fst D.tableEmployees)
       Lib2.executeStatement parsedStatement `shouldSatisfy` isRight
+      
+  describe "Lib2.whereBool" $ do
+    it "filters rows based on a boolean condition" $ do
+      let input = "select * from employees where id = 1"
+      case Lib2.whereBool input of
+        Right filteredDataFrame -> do
+          let expectedDataFrame = DataFrame
+                [ Column "id" IntegerType
+                , Column "name" StringType
+                , Column "surname" StringType
+                ]
+                [ [ IntegerValue 1, StringValue "Vi", StringValue "Po" ]
+                ]
+          filteredDataFrame `shouldBe` expectedDataFrame
+        Left err -> expectationFailure ("Expected success but got an error: " ++ err)
+

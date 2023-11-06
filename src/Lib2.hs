@@ -11,7 +11,8 @@ module Lib2
     ColumnName,
     ParsedStatement(..),
     AggregateFunction(..),
-    Value(..)
+    Value(..),
+    whereBool,
   )
 where
 
@@ -40,6 +41,7 @@ data ParsedStatement
   deriving (Show, Eq)
 
 
+-- Add a new constructor for boolean conditions
 data ParsedCondition
   = EqualCondition ColumnName Value
   | NotEqualCondition ColumnName Value
@@ -47,10 +49,8 @@ data ParsedCondition
   | LessThanOrEqualCondition ColumnName Value
   | GreaterThanCondition ColumnName Value
   | GreaterThanOrEqualCondition ColumnName Value
+  | BoolCondition ColumnName Bool  
   deriving (Show, Eq)
-
-
-
 
 
 data AggregateFunction
@@ -64,19 +64,18 @@ instance Eq AggregateFunction where
   Min == Min = True
   _   == _   = False
 
--- Extract table names from the database
 tableNames :: [TableName]
 tableNames = map fst database
 
--- Define the list of valid command keywords
+
 commandKeywords :: [String]
 commandKeywords = ["select", "*", "from", "show", "table", "tables"]
 
--- Combine the command keywords with table names
+
 names :: [String]
 names = commandKeywords ++ tableNames
 
--- Modify parseStatement to handle conditions
+
 parseStatement :: String -> Either ErrorMessage ParsedStatement
 parseStatement input =
   let tokens = words input
@@ -93,7 +92,7 @@ parseStatement input =
       case parseConditions conditionStr of
         Just conditions -> Right (SelectWhereStatement conditions table)
         Nothing -> Left "Invalid condition"
-    ["select", "*", "from", table, "where", column, "=", value] -> -- Add this case
+    ["select", "*", "from", table, "where", column, "=", value] -> 
       case readValue value of
         Just v -> Right (SelectWhereStatement [EqualCondition column v] table)
         Nothing -> Left "Invalid value"
@@ -269,7 +268,7 @@ parseConditions conditionStr =
 
 parseCondition :: String -> Maybe ParsedCondition
 parseCondition conditionToken
-  | "==" `isSuffixOf` conditionToken = -- Handle "=="
+  | "==" `isSuffixOf` conditionToken = 
       let (column, valueStr) = break (== '=') conditionToken
           value = readValue (drop 2 valueStr) -- drop the '==' part
       in case value of
@@ -325,17 +324,16 @@ matchesCondition (EqualCondition colName value) columns row =
     Just idx -> row !! idx == value
     Nothing  -> False
 
--- Implementation of the whereAND function:
 whereAND :: String -> Either ErrorMessage DataFrame
 whereAND input =
   case parseStatement input of
-    Right (SelectAndStatement conditions tableName) -> -- Handle SelectAndStatement
+    Right (SelectAndStatement conditions tableName) -> 
       case findTableByName database tableName of
         Just (DataFrame columns rows) ->
           let matchingRows = filter (matchesAllConditions conditions columns) rows
           in Right (DataFrame columns matchingRows)
         Nothing -> Left "Table not found"
-    Right (SelectWhereStatement conditions tableName) -> -- Handle SelectWhereStatement
+    Right (SelectWhereStatement conditions tableName) -> 
       case findTableByName database tableName of
         Just (DataFrame columns rows) ->
           let matchingRows = filter (matchesAllConditions conditions columns) rows
@@ -343,3 +341,14 @@ whereAND input =
         Nothing -> Left "Table not found"
     _ -> Left "Invalid statement"
 
+
+whereBool :: String -> Either ErrorMessage DataFrame
+whereBool input =
+  case parseStatement input of
+    Right (SelectWhereStatement conditions tableName) ->
+      case findTableByName database tableName of
+        Just (DataFrame columns rows) ->
+          let matchingRows = filter (matchesAllConditions conditions columns) rows
+          in Right (DataFrame columns matchingRows)
+        Nothing -> Left "Table not found"
+    _ -> Left "Invalid statement"
