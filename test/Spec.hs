@@ -1,13 +1,15 @@
 {-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 {-# LANGUAGE BlockArguments #-}
-import Data.Either
-import Data.Either (isRight)
+
+import Data.Either (isLeft, isRight)
 import Data.Maybe ()
 import InMemoryTables qualified as D
 import Lib1
 import Test.Hspec
 import Lib2
 import DataFrame
+import Lib2 (Value(NullValue))
+
 
 main :: IO ()
 main = hspec $ do
@@ -43,109 +45,69 @@ main = hspec $ do
     it "renders a table" $ do
       Lib1.renderDataFrameAsTable 100 (snd D.tableEmployees) `shouldSatisfy` not . null
 
------------------------------------------------------------------------------------
+    ---lib2 add here---
+  describe "Lib2.executeStatement" $ do
+    it "executes show tables statement" $ do
+      Lib2.executeStatement ShowTablesStatement `shouldSatisfy` isRight
+    it "executes show table <name> statement" $ do
+      Lib2.executeStatement ShowTableStatement {table = "employees"} `shouldSatisfy` isRight
+    it "executes simple select statement" $ do
+      Lib2.executeStatement SelectStatement {table = "employees", query = [SelectColumn "id"], whereClause = Nothing} `shouldSatisfy` isRight
+    it "executes select statement with an aggregate" $ do
+      Lib2.executeStatement SelectStatement {table = "employees", query = [SelectAggregate (Aggregate Min "id")], whereClause = Nothing} `shouldSatisfy` isRight
+    it "executes select statement with a where clause" $ do
+      Lib2.executeStatement SelectStatement {table = "employees", query = [SelectColumn "id"], whereClause = Just [(WhereCriterion (ColumnExpression "name") RelEQ (ValueExpression (StringValue "Ed")),Nothing)]} `shouldSatisfy` isRight
 
   describe "Lib2.parseStatement" $ do
-    it "parses show tables statement" $ do
-      Lib2.parseStatement "show tables" `shouldBe` Right Lib2.ShowTables
-    it "parses SHOW TABLES statement" $ do
-      Lib2.parseStatement "SHOW TABLES" `shouldBe` Right Lib2.ShowTables
-    it "parses show table name statement" $ do
-      Lib2.parseStatement "show table employees" `shouldBe` Right (Lib2.ShowTable "employees")
-    it "parses SHOW TABLE name statement" $ do
-      Lib2.parseStatement "SHOW TABLE employees" `shouldBe` Right (Lib2.ShowTable "employees")
-    it "handles an invalid column list" $ do
-      Lib2.parseStatement ",id ,,name," `shouldSatisfy` isLeft
-    it "handles a valid sum request statement" $ do
-      Lib2.parseStatement "select sum ( id ) from employees" `shouldBe` Right (SelectSumStatement Sum "id" "employees")
-
-  describe "Lib2.whereAND" $ do
-    it "parses a valid where AND statement" $ do
-      let input = "select * from employees where id = 1"
-      case Lib2.parseStatement input of
-        Right parsedStatement -> do
-          let result = Lib2.executeStatement parsedStatement
-          case result of
-            Right df -> do
-              let expectedDataFrame = DataFrame [Column "id" IntegerType, Column "name" StringType, Column "surname" StringType] [[IntegerValue 1, StringValue "Vi", StringValue "Po"]]
-              df `shouldBe` expectedDataFrame
-            Left err -> expectationFailure ("Expected a result but got an error: " ++ err)
-        Left err -> expectationFailure ("Failed to parse statement: " ++ err)
-
-
-  describe "Lib2.calculateMinimum" $ do
-    it "calculates the minimum with a list of IntegerValues" $ do
-      let values = [IntegerValue 3, IntegerValue 1, IntegerValue 2]
-      Lib2.calculateMinimum values `shouldBe` IntegerValue 1
-    it "returns NullValue for a list with mixed types" $ do
-      let values = [IntegerValue 3, StringValue "hello", BoolValue True]
-      Lib2.calculateMinimum values `shouldBe` NullValue  
-
-  describe "Lib2.selectColumns" $ do
-    it "handles an empty list of columns" $ do
-      let inputColumns = []  -- Pass an empty list of columns
-      let result = Lib2.selectColumns inputColumns (snd D.tableEmployees)
-      case result of
-        Right df -> do
-          let expectedDataFrame = snd D.tableEmployees  -- The result should be the same as the input DataFrame
-          df `shouldBe` expectedDataFrame
-        Left err -> expectationFailure ("Expected success but got an error: " ++ err)
-
-  describe "Lib2.calculateSum" $ do
-    it "calculates the sum of IntegerValues in a specified column" $ do
-      let values = [IntegerValue 1, IntegerValue 2, IntegerValue 3]
-      Lib2.calculateSum values `shouldBe` Just 6
-    it "returns Nothing for a list with mixed values' types" $ do
-      let values = [IntegerValue 1, StringValue "test", BoolValue False]
-      Lib2.calculateSum values `shouldBe` Nothing
-    it "returns Nothing for a list with no IntegerValue elements" $ do
-      let values = [StringValue "1", StringValue "test", StringValue "False"]
-      Lib2.calculateSum values `shouldBe` Nothing
-    it "calculates the sum of an empty list" $ do
-      let values = []
-      Lib2.calculateSum values `shouldBe` Just 0
-
-  describe "Lib2.executeStatement" $ do
-    it "returns the sum for a valid SelectSumStatement" $ do
-      let result = executeStatement (SelectSumStatement Sum "id" "employees")
-      result `shouldBe` Right (DataFrame [Column "Sum" IntegerType] [[IntegerValue 3]])
-    it "handles an invalid aggregation column for sum" $ do
-      let result = executeStatement (SelectSumStatement Sum "invalid_column" "employees")
-      result `shouldSatisfy` isLeft
-    it "handles an invalid table name for sum" $ do
-      let result = executeStatement (SelectSumStatement Sum "id" "invalid_tableName")
-      result `shouldSatisfy` isLeft
-    
-    it "returns the min for a valid SelectMinStatement" $ do
-      let result = executeStatement (SelectMinStatement Min "id" "employees")
-      result `shouldBe` Right (DataFrame [Column "Result" IntegerType] [[IntegerValue 1]])
-    it "returns the min for a valid SelectMinStatement" $ do
-      let result = executeStatement (SelectMinStatement Min "name" "employees")
-      result `shouldBe` Right (DataFrame [Column "Result" StringType] [[StringValue "Ed"]])
-    it "handles an invalid aggregation column for min" $ do
-      let result = executeStatement (SelectMinStatement Min "invalid_column" "employees")
-      result `shouldSatisfy` isLeft
-    it "handles an invalid table name for min" $ do
-      let result = executeStatement (SelectMinStatement Min "id" "invalid_tableName")
-      result `shouldSatisfy` isLeft
-    
-    it "returns a table with selected columns" $ do
-      let input = ["id", "name", "surname"]
-      let parsedStatement = SelectColumnListStatement input (fst D.tableEmployees)
-      Lib2.executeStatement parsedStatement `shouldSatisfy` isRight
-      
-  describe "Lib2.whereBool" $ do
-    it "filters rows based on a boolean condition" $ do
-      let input = "select * from employees where id = 1"
-      case Lib2.whereBool input of
-        Right filteredDataFrame -> do
-          let expectedDataFrame = DataFrame
-                [ Column "id" IntegerType
-                , Column "name" StringType
-                , Column "surname" StringType
-                ]
-                [ [ IntegerValue 1, StringValue "Vi", StringValue "Po" ]
-                ]
-          filteredDataFrame `shouldBe` expectedDataFrame
-        Left err -> expectationFailure ("Expected success but got an error: " ++ err)
-
+    it "handles invalid statement" $ do
+      Lib2.parseStatement "shw tables;" `shouldSatisfy` isLeft
+    it "handles invalid SELECT statement" $ do
+      Lib2.parseStatement "SELECT id name FROM employees;" `shouldSatisfy` isLeft
+    it "handles basic SELECT statement" $ do
+      Lib2.parseStatement "SELECT a, b FROM table;" `shouldBe` Right (SelectStatement {table = "table", query = [SelectColumn "a",SelectColumn "b"], whereClause = Nothing})
+    it "handles basic SELECT statement with columns without whitespace separator" $ do
+      Lib2.parseStatement "SELECT a,b FROM table;" `shouldBe` Right (SelectStatement {table = "table", query = [SelectColumn "a",SelectColumn "b"], whereClause = Nothing})
+    it "handles basic SELECT statement with columns without  separator" $ do
+      Lib2.parseStatement "SELECT a b FROM table;" `shouldSatisfy` isLeft
+    it "handles basic SELECT statement with multiple aggregates" $ do
+      Lib2.parseStatement "SELECT MIN(a), SUM(b) FROM table;" `shouldBe` Right (SelectStatement {table = "table", query = [SelectAggregate (Aggregate Min "a"), SelectAggregate (Aggregate Sum "b")], whereClause = Nothing})
+    it "handles SELECT statement that mixes columns and aggregates" $ do
+      Lib2.parseStatement "SELECT MIN(a), b FROM table;" `shouldSatisfy` isLeft
+    it "handles SELECT statement with multiple WHERE criterion that compare columns" $ do
+      Lib2.parseStatement "SELECT a, b, c, d FROM table WHERE a=b AND b!=c AND c>d AND d<e AND a>=b AND b<=c;" `shouldBe` Right (SelectStatement {table = "table", query = [SelectColumn "a",SelectColumn "b",SelectColumn "c",SelectColumn "d"], whereClause = Just [(WhereCriterion (ColumnExpression "a") RelEQ (ColumnExpression "b"),Just And),(WhereCriterion (ColumnExpression "b") RelNE (ColumnExpression "c"),Just And),(WhereCriterion (ColumnExpression "c") RelGT (ColumnExpression "d"),Just And),(WhereCriterion (ColumnExpression "d") RelLT (ColumnExpression "e"),Just And),(WhereCriterion (ColumnExpression "a") RelGE (ColumnExpression "b"),Just And),(WhereCriterion (ColumnExpression "b") RelLE (ColumnExpression "c"),Nothing)]})
+    it "handles SELECT statement with multiple WHERE criterion that compare strings" $ do
+        Lib2.parseStatement "SELECT a FROM table WHERE 'aa'='aa' AND 'a'!='b' 'b'<'c';" `shouldBe` Right (SelectStatement {table = "table", query = [SelectColumn "a"], whereClause = Just [(WhereCriterion (ValueExpression (StringValue 
+        "aa")) RelEQ (ValueExpression (StringValue "aa")),Just And),(WhereCriterion (ValueExpression (StringValue "a")) RelNE (ValueExpression 
+        (StringValue "b")),Nothing),(WhereCriterion (ValueExpression (StringValue "b")) RelLT (ValueExpression (StringValue "c")),Nothing)]})
+    it "handles SELECT statement with multiple WHERE criterion that compare strings and columns" $ do
+      Lib2.parseStatement "SELECT a FROM table WHERE a='aa' AND aaa!='b' AND 'b'<aaa;" `shouldBe` Right (SelectStatement {table = "table", query = [SelectColumn "a"], whereClause = Just [(WhereCriterion (ColumnExpression "a") RelEQ (ValueExpression (StringValue "aa")),Just And),(WhereCriterion (ColumnExpression "aaa") RelNE (ValueExpression (StringValue "b")),Just And),(WhereCriterion (ValueExpression (StringValue "b")) RelLT (ColumnExpression "aaa"),Nothing)]})
+    it "handles empty input" $ do
+      Lib2.parseStatement "" `shouldSatisfy` isLeft
+    it "handles unexpected symbols after end of statement" $ do
+      Lib2.parseStatement "SHOW TABLE Users;a" `shouldSatisfy` isLeft
+    it "handles whitespace error" $ do
+      Lib2.parseStatement "ShowTable Users;" `shouldSatisfy` isLeft
+    it "handles show table without table name" $ do
+      Lib2.parseStatement "SHOW TABLE" `shouldSatisfy` isLeft
+    it "parses show table statement with uppercase" $ do
+      Lib2.parseStatement "SHOW TABLE Users;" `shouldBe` Right (ShowTableStatement "Users")
+    it "parses show table statement with lowercase alphanum and underscore table name" $ do
+      Lib2.parseStatement "show table _organization_123" `shouldBe` Right (ShowTableStatement "_organization_123")
+    it "parses show table statement with mixed casing and whitespace" $ do
+      Lib2.parseStatement "   ShOW   taBlE    Hello_WORLD   ;  " `shouldBe` Right (ShowTableStatement "Hello_WORLD")
+    it "parses show tables statement with uppercase" $ do
+      Lib2.parseStatement "SHOW TABLES;" `shouldBe` Right ShowTablesStatement
+    it "handles whitespace error in show tables statement" $ do
+      Lib2.parseStatement "ShowTables;" `shouldSatisfy` isLeft
+    it "handles unexpected symbols after end of the show tables statement" $ do
+      Lib2.parseStatement "show tables;a" `shouldSatisfy` isLeft
+    it "parses show tables statement with mixed casing" $ do
+      Lib2.parseStatement "ShOW taBLeS;" `shouldBe` Right ShowTablesStatement
+    it "parses show tables statement with whitespaces" $ do
+      Lib2.parseStatement "show      tables    ;  " `shouldBe` Right ShowTablesStatement
+    it "parses show tables statement lowercase" $ do
+      Lib2.parseStatement "show tables;" `shouldBe` Right ShowTablesStatement
+    it "parses show tables statement Uppercase" $ do
+      Lib2.parseStatement "SHOW TABLES;" `shouldBe` Right ShowTablesStatement
+    it "parses show tables statement with mixed casing and whitespace" $ do
+      Lib2.parseStatement "   ShOW   taBLeS    ;  " `shouldBe` Right ShowTablesStatement
