@@ -81,26 +81,6 @@ parseStatement input =
     ["show", "tables"] -> Right ShowTables
     ["show", "table", tableName] -> Right (ShowTable tableName)
     ["select", "*", "from", table] -> Right (SelectColumnListStatement ["*"] table)
-    "select" : rest ->
-      case break (== "from") rest of
-        (cols, "from" : "(" : innerRest) ->
-          let (innerQueryTokens, remaining) = span (/= ")") innerRest
-              innerQuery = unwords innerQueryTokens
-              parsedInnerQuery = parseStatement innerQuery
-              columns = parseColumnList (unwords cols)
-              subqueryAlias = case dropWhile (/= ")") remaining of
-                                ")" : "as" : alias : _ -> Just alias
-                                _ -> Nothing
-          in case parsedInnerQuery of
-              Right parsed ->
-                if isJust subqueryAlias
-                then Right (NestedSelectStatement parsed columns)
-                else Left "Subquery alias missing or incorrect"
-              Left err -> Left err
-        (cols, "from" : table : _) ->
-          let columns = parseColumnList (unwords cols)
-          in Right (SelectSpecificColumnStatement columns table)
-        _ -> Left "Invalid statement"
     ["select", "sum", "(", column, ")", "from", table] ->
       Right (SelectSumStatement Sum column table)
     ["select", "min", "(", column, ")", "from", table] ->
@@ -123,6 +103,26 @@ parseStatement input =
             (Just v1, Just v2) -> Right (SelectAndStatement [op1 column v1, op2 column' v2] table)
             _ -> Left "Invalid value"
         _ -> Left "Invalid operator"
+    "select" : rest ->
+      case break (== "from") rest of
+        (cols, "from" : "(" : innerRest) ->
+          let (innerQueryTokens, remaining) = span (/= ")") innerRest
+              innerQuery = unwords innerQueryTokens
+              parsedInnerQuery = parseStatement innerQuery
+              columns = parseColumnList (unwords cols)
+              subqueryAlias = case dropWhile (/= ")") remaining of
+                                ")" : "as" : alias : _ -> Just alias
+                                _ -> Nothing
+          in case parsedInnerQuery of
+              Right parsed ->
+                if isJust subqueryAlias
+                then Right (NestedSelectStatement parsed columns)
+                else Left "Subquery alias missing or incorrect"
+              Left err -> Left err
+        (cols, "from" : table : _) ->
+          let columns = parseColumnList (unwords cols)
+          in Right (SelectSpecificColumnStatement columns table)
+        _ -> Left "Invalid statement"
     _ -> Left "Invalid statement"
 
 parseOperator :: String -> Maybe (ColumnName -> Value -> ParsedCondition)
@@ -225,13 +225,13 @@ calculateMinimum values =
 
 minVal :: Value -> Value -> Value
 minVal (IntegerValue a) (IntegerValue b) = IntegerValue (min a b)
-minVal (StringValue a) (StringValue b) = StringValue (min a b)  -- lexicographical comparison
+minVal (StringValue a) (StringValue b) = StringValue (min a b)  
 minVal (BoolValue a) (BoolValue b) = BoolValue (min a b)
 minVal _ _ = NullValue
 
 findColumnIndex :: ColumnName -> [Column] -> Maybe Int
 findColumnIndex columnName =
-  findIndex (\ (Column name _) -> name == columnName)
+  findIndex (\(Column name _) -> map toLower name == map toLower columnName)
 
 getColumnType :: Value -> ColumnType
 getColumnType value =
@@ -296,7 +296,6 @@ extractIntegerValue :: Value -> Maybe Integer
 extractIntegerValue (IntegerValue i) = Just i
 extractIntegerValue _ = Nothing
 
--- Helper function to parse an IntegerValue
 readValue :: String -> Maybe Value
 readValue str = case reads str of
   [(val, "")] -> Just (IntegerValue val)
@@ -340,7 +339,7 @@ instance Ord Value where
     compare (IntegerValue a) (IntegerValue b) = compare a b
     compare (BoolValue a) (BoolValue b) = compare a b
     compare (StringValue a) (StringValue b) = compare a b
-    compare _ _ = EQ  -- Default to EQ for other cases
+    compare _ _ = EQ 
 
 whereAND :: String -> Either ErrorMessage DataFrame
 whereAND input =
