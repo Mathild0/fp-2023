@@ -32,6 +32,7 @@ type ColumnName = String
 data ParsedStatement
   = ParsedStatement
   | SelectSumStatement AggregateFunction ColumnName TableName
+  | SelectSpecificColumnStatement [String] TableName
   | SelectMinStatement AggregateFunction ColumnName TableName
   | SelectColumnListStatement [String] TableName
   | ShowTables
@@ -39,9 +40,9 @@ data ParsedStatement
   | SelectAndStatement [ParsedCondition] TableName 
   | SelectWhereStatement [ParsedCondition] TableName
   | SelectBoolStatement ColumnName Bool TableName
+  | NestedSelectStatement ParsedStatement [String]
   deriving (Show, Eq)
 
--- Add a new constructor for boolean conditions
 data ParsedCondition
   = EqualCondition ColumnName Value
   | NotEqualCondition ColumnName Value
@@ -51,7 +52,6 @@ data ParsedCondition
   | GreaterThanOrEqualCondition ColumnName Value
   | BoolCondition ColumnName Bool  
   deriving (Show, Eq)
-
 
 data AggregateFunction
   = Sum
@@ -67,14 +67,11 @@ instance Eq AggregateFunction where
 tableNames :: [TableName]
 tableNames = map fst database
 
-
 commandKeywords :: [String]
 commandKeywords = ["select", "*", "from", "show", "table", "tables"]
 
-
 names :: [String]
 names = commandKeywords ++ tableNames
-
 
 parseStatement :: String -> Either ErrorMessage ParsedStatement
 parseStatement input =
@@ -84,6 +81,26 @@ parseStatement input =
     ["show", "tables"] -> Right ShowTables
     ["show", "table", tableName] -> Right (ShowTable tableName)
     ["select", "*", "from", table] -> Right (SelectColumnListStatement ["*"] table)
+    "select" : rest ->
+      case break (== "from") rest of
+        (cols, "from" : "(" : innerRest) ->
+          let (innerQueryTokens, remaining) = span (/= ")") innerRest
+              innerQuery = unwords innerQueryTokens
+              parsedInnerQuery = parseStatement innerQuery
+              columns = parseColumnList (unwords cols)
+              subqueryAlias = case dropWhile (/= ")") remaining of
+                                ")" : "as" : alias : _ -> Just alias
+                                _ -> Nothing
+          in case parsedInnerQuery of
+              Right parsed ->
+                if isJust subqueryAlias
+                then Right (NestedSelectStatement parsed columns)
+                else Left "Subquery alias missing or incorrect"
+              Left err -> Left err
+        (cols, "from" : table : _) ->
+          let columns = parseColumnList (unwords cols)
+          in Right (SelectSpecificColumnStatement columns table)
+        _ -> Left "Invalid statement"
     ["select", "sum", "(", column, ")", "from", table] ->
       Right (SelectSumStatement Sum column table)
     ["select", "min", "(", column, ")", "from", table] ->
@@ -105,7 +122,7 @@ parseStatement input =
           case (readValue value, readValue value') of
             (Just v1, Just v2) -> Right (SelectAndStatement [op1 column v1, op2 column' v2] table)
             _ -> Left "Invalid value"
-        _ -> Left "Invalid operator"    
+        _ -> Left "Invalid operator"
     _ -> Left "Invalid statement"
 
 parseOperator :: String -> Maybe (ColumnName -> Value -> ParsedCondition)
@@ -129,6 +146,10 @@ executeStatement (ShowTable tableName) =
   case findTableByName database tableName of
     Just table -> Right table
     Nothing -> Left "Table not found"
+
+executeStatement (SelectSpecificColumnStatement columns tableName) =
+  case findTableByName database tableName of
+    Just table -> selectColumns columns table
 
 executeStatement (SelectSumStatement Sum column tableName) =
   case findTableByName database tableName of
@@ -180,9 +201,13 @@ executeStatement (SelectBoolStatement columnName boolValue tableName) =
       in Right (DataFrame columns matchingRows)
     Nothing -> Left "Table not found"
 
+executeStatement (NestedSelectStatement innerQuery columns) =
+  case executeStatement innerQuery of
+    Right innerResult -> selectColumns columns innerResult
+    Left errorMessage -> Left errorMessage
+
 executeStatement _ = Left "Not implemented: executeStatement"
 
--- Helper function to check if a Value is of a valid type
 isValidValue :: Value -> Bool
 isValidValue value =
   case value of
@@ -198,19 +223,16 @@ calculateMinimum values =
     [] -> NullValue
     (x:xs) -> foldr minVal x xs
 
--- A function to determine the "minimum" of two Value items, considering different data types
 minVal :: Value -> Value -> Value
 minVal (IntegerValue a) (IntegerValue b) = IntegerValue (min a b)
 minVal (StringValue a) (StringValue b) = StringValue (min a b)  -- lexicographical comparison
 minVal (BoolValue a) (BoolValue b) = BoolValue (min a b)
 minVal _ _ = NullValue
 
--- Helper function to find the index of a column by name
 findColumnIndex :: ColumnName -> [Column] -> Maybe Int
 findColumnIndex columnName =
   findIndex (\ (Column name _) -> name == columnName)
 
--- Helper function to determine the column type based on a Value
 getColumnType :: Value -> ColumnType
 getColumnType value =
   case value of
@@ -280,7 +302,6 @@ readValue str = case reads str of
   [(val, "")] -> Just (IntegerValue val)
   _           -> Nothing
 
--- to check if a row matches all conditions
 matchesAllConditions :: [ParsedCondition] -> [Column] -> Row -> Bool
 matchesAllConditions conditions columns row =
   all (\condition -> matchesCondition condition columns row) conditions
@@ -331,7 +352,6 @@ whereAND input =
           in Right (DataFrame columns matchingRows)
         Nothing -> Left "Table not found"    
     _ -> Left "Invalid statement"
-
 
 whereBool :: String -> Either ErrorMessage DataFrame
 whereBool input =
