@@ -225,7 +225,7 @@ calculateMinimum values =
 
 minVal :: Value -> Value -> Value
 minVal (IntegerValue a) (IntegerValue b) = IntegerValue (min a b)
-minVal (StringValue a) (StringValue b) = StringValue (min a b)  -- lexicographical comparison
+minVal (StringValue a) (StringValue b) = StringValue (min a b)  
 minVal (BoolValue a) (BoolValue b) = BoolValue (min a b)
 minVal _ _ = NullValue
 
@@ -296,7 +296,6 @@ extractIntegerValue :: Value -> Maybe Integer
 extractIntegerValue (IntegerValue i) = Just i
 extractIntegerValue _ = Nothing
 
--- Helper function to parse an IntegerValue
 readValue :: String -> Maybe Value
 readValue str = case reads str of
   [(val, "")] -> Just (IntegerValue val)
@@ -340,7 +339,7 @@ instance Ord Value where
     compare (IntegerValue a) (IntegerValue b) = compare a b
     compare (BoolValue a) (BoolValue b) = compare a b
     compare (StringValue a) (StringValue b) = compare a b
-    compare _ _ = EQ  -- Default to EQ for other cases
+    compare _ _ = EQ 
 
 whereAND :: String -> Either ErrorMessage DataFrame
 whereAND input =
