@@ -18,6 +18,7 @@ import Lib2
 import Data.Maybe (fromMaybe)
 import Data.Maybe (catMaybes, fromJust)
 import Data.Char (isDigit, isSpace)
+import Data.List (foldl')
 
 type TableName = String
 type FileContent = String
@@ -111,6 +112,7 @@ executeJoinSelectStatement sql = do
             let joinedTables = joinTables database condition
             return joinedTables
         _ -> return $ Left "Invalid JOIN statement or join condition not found"
+
 
 executeGeneralStatement :: String -> Execution (Either ErrorMessage DataFrame)
 executeGeneralStatement sql = do
@@ -365,13 +367,15 @@ currentTimeDataFrame currentTime =
 updateTable :: Maybe Condition -> [(Lib2.ColumnName, Value)] -> DataFrame -> DataFrame
 updateTable maybeCondition updates (DataFrame columns rows) =
     let colIndices = map (\(colName, _) -> findColumnIndex colName columns) updates
+        newValues = map snd updates
         updatedRows = map (\row -> if matchCondition maybeCondition (DataFrame columns rows) row
-                                  then updateRow colIndices updates row
+                                  then updateRow colIndices newValues row
                                   else row) rows
     in DataFrame columns updatedRows
 
-updateRow :: [(Int, Value)] -> Row -> Row
-updateRow updates row = foldl' updateValueInRow row updates
+updateRow :: [Int] -> [Value] -> Row -> Row
+updateRow colIndices newValues row =
+    foldl' (\r (index, newValue) -> updateValueAtIndex index newValue r) row (zip colIndices newValues)
 
 updateValueInRow :: Row -> (Int, Value) -> Row
 updateValueInRow row (index, newValue) = 
