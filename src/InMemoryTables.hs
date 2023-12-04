@@ -27,8 +27,8 @@ tableInvalid1 :: (TableName, DataFrame)
 tableInvalid1 =
   ( "invalid1",
     DataFrame
-      [Column "id" IntegerType]
-      [ [StringValue "1"]
+      [Column "idas" IntegerType, Column "test" StringType]
+      [ [IntegerValue 1, StringValue "testas"]
       ]
   )
 

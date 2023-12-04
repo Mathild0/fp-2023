@@ -63,6 +63,5 @@ runExecuteIO (Free step) = do
     next <- runStep step
     runExecuteIO next
     where
-        -- probably you will want to extend the interpreter
         runStep :: Lib3.ExecutionAlgebra a -> IO a
         runStep (Lib3.GetTime next) = getCurrentTime >>= return . next
