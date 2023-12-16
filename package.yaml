@@ -42,6 +42,11 @@ library:
   - free
   - time
   - transformers
+  - text
+  - these
+  - filepath
+  - yaml
+ 
 
 executables:
   fp2023-select-all:

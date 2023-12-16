@@ -1,0 +1,6 @@
+id:int
+name:string
+surname:string
+---
+1, Vi, Po
+2, Ed, Dl
