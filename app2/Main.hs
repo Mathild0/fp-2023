@@ -1,10 +1,15 @@
 module Main (main) where
 
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.Free (Free (..), liftF)
+
+import Data.Functor((<&>))
+import Data.Time (UTCTime, getCurrentTime)
 import Data.List qualified as L
 import InMemoryTables (database)
 import Lib1 qualified
 import Lib2 qualified
+import Lib3 qualified
 import System.Console.Repline
   ( CompleterStyle (Word),
     ExitDecision (Exit),
@@ -14,6 +19,10 @@ import System.Console.Repline
   )
 import System.Console.Terminal.Size (Window, size, width)
 
+import System.FilePath ((</>), (<.>))
+import System.Directory (doesFileExist)
+import GHC.Read (readField)
+
 type Repl a = HaskelineT IO a
 
 final :: Repl ExitDecision
@@ -22,30 +31,56 @@ final = do
   return Exit
 
 ini :: Repl ()
-ini = liftIO $ putStrLn "Welcome to select-more database! Press [TAB] for auto completion."
+ini = liftIO $ putStrLn "Welcome to select-manipulate database! Press [TAB] for auto completion."
 
 completer :: (Monad m) => WordCompleter m
 completer n = do
-  let names = ["select", "*", "from", "show", "table", "tables"] ++ map fst database
+  let names = [
+              "select", "*", "from", "show", "table",
+              "tables", "insert", "into", "values",
+              "set", "update", "delete"
+              ]
   return $ Prelude.filter (L.isPrefixOf n) names
 
 -- Evaluation : handle each line user inputs
 cmd :: String -> Repl ()
 cmd c = do
   s <- terminalWidth <$> liftIO size
-  case cmd' s of
+  result <- liftIO $ cmd' s
+  case result of
     Left err -> liftIO $ putStrLn $ "Error: " ++ err
     Right table -> liftIO $ putStrLn table
   where
     terminalWidth :: (Integral n) => Maybe (Window n) -> n
     terminalWidth = maybe 80 width
-    cmd' :: Integer -> Either String String
+    cmd' :: Integer -> IO (Either String String)
     cmd' s = do
-      stmt <- Lib2.parseStatement c
-      df <- Lib2.executeStatement stmt
-      _ <- Lib1.validateDataFrame df
-      return $ Lib1.renderDataFrameAsTable s df
+      df <- runExecuteIO $ Lib3.executeSql c
+      return $ Lib1.renderDataFrameAsTable s <$> df
 
 main :: IO ()
 main =
   evalRepl (const $ pure ">>> ") cmd [] Nothing Nothing (Word completer) ini final
+
+runExecuteIO :: Lib3.Execution r -> IO r
+runExecuteIO (Pure r) = return r
+runExecuteIO (Free step) = do
+    next <- runStep step
+    runExecuteIO next
+    where
+        runStep :: Lib3.ExecutionAlgebra a -> IO a
+        runStep (Lib3.GetTime next) = getCurrentTime >>= return . next
+        runStep (Lib3.LoadFiles tableNames next) = do
+          let tablePath = getFilePath tableNames
+          exists <- doesFileExist tablePath
+          if exists 
+            then next . Lib3.deserializeTable =<< readFile tablePath
+            else return $ next $ Left "Table/s does not exist."
+        runStep (Lib3.SaveTable (tableName, dataframe) next) = do
+          let yamlData = Lib3.serializeToYAML Lib3.serializeFile (tableName, dataframe)
+              filePath = getFilePath tableName
+          writeFile filePath yamlData
+          return next
+
+getFilePath :: String -> FilePath
+getFilePath tableName = "db" </> tableName <.> "yaml"

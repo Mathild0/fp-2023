@@ -46,7 +46,8 @@ library:
   - these
   - filepath
   - yaml
- 
+  - directory
+  - aeson
 
 executables:
   fp2023-select-all:
@@ -87,6 +88,10 @@ executables:
     - terminal-size
     - free
     - time
+    - aeson
+    - yaml
+    - directory
+    - filepath
 
 tests:
   fp2023-test:
