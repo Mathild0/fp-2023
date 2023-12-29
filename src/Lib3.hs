@@ -11,7 +11,9 @@ module Lib3
     loadFiles,
     saveTable,
     getTime,
-    parseYAMLContent
+    parseYAMLContent,
+    currentTimeDataFrame,
+    executeNowStatement  
   )
 where
 import Debug.Trace   
@@ -257,7 +259,7 @@ parseCondition :: String -> (Lib2.ColumnName, Value)
 parseCondition cond = 
     let (colName, valueStr) = break (== '=') cond
         trimmedColName = trim colName
-        trimmedValueStr = trim $ drop 1 valueStr -- Remove '=' and trim
+        trimmedValueStr = trim $ drop 1 valueStr 
     in (trimmedColName, readValue trimmedValueStr)
 
 getTableName :: [String] -> Maybe TableName
@@ -327,11 +329,11 @@ joinDataFrames :: DataFrame -> Lib2.ColumnName -> DataFrame -> Lib2.ColumnName -
 joinDataFrames (DataFrame cols1 rows1) col1Name (DataFrame cols2 rows2) col2Name =
     let col1Index = getColumnIndex col1Name cols1
         col2Index = getColumnIndex col2Name cols2
-        combinedCols = cols1 ++ cols2  -- Include all columns from both tables
+        combinedCols = cols1 ++ cols2  
         combinedRows = concatMap (\row1 ->
                           case find (\row2 -> row2 !! col2Index == row1 !! col1Index) rows2 of
-                            Just row2 -> [row1 ++ row2]  -- Include the entire row from the second table
-                            Nothing -> [row1 ++ replicate (length cols2) (StringValue "NULL")])  -- Handle no match case
+                            Just row2 -> [row1 ++ row2] 
+                            Nothing -> [row1 ++ replicate (length cols2) (StringValue "NULL")])  
                         rows1
     in DataFrame combinedCols combinedRows
 
@@ -476,27 +478,27 @@ serializeFile (tableName, DataFrame columns dataRows) =
 serializedRowToRow :: [Yaml.Value] -> Row
 serializedRowToRow = map yamlValueToValue
 
--- Fixing yamlValueToValue Function
+
 yamlValueToValue :: Yaml.Value -> Value
-yamlValueToValue (Yaml.String s) = StringValue (T.unpack s) -- Change here
+yamlValueToValue (Yaml.String s) = StringValue (T.unpack s) 
 yamlValueToValue (Yaml.Number n) = IntegerValue (round n)
 yamlValueToValue (Yaml.Bool b)   = BoolValue b
 yamlValueToValue Yaml.Null       = NullValue
 yamlValueToValue _               = error "Unsupported Yaml value type"
 
--- Conversion logic
+
 serializedTableToDataFrame :: SerializedTable -> DataFrame
 serializedTableToDataFrame (SerializedTable _ serializedColumns serializedRows) =
     let columns = map serializedColumnToColumn serializedColumns
         rows = map serializedRowToRow serializedRows
     in DataFrame columns rows
 
--- Helper function to convert a SerializedColumn to a Column
+
 serializedColumnToColumn :: SerializedColumn -> Column
 serializedColumnToColumn (SerializedColumn colName colType) =
     Column colName (stringToColumnType colType)
 
--- Helper function to convert column type from String to ColumnType
+
 stringToColumnType :: String -> ColumnType
 stringToColumnType "int" = IntegerType
 stringToColumnType "string" = StringType
