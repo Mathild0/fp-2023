@@ -25,6 +25,7 @@ dependencies:
 - aeson
 - text
 - time
+- free
 default-extensions:
 - ImportQualifiedPost
 
@@ -51,7 +52,8 @@ library:
   - yaml
   - directory
   - aeson
-  - bytestring 
+  - bytestring
+   
 executables:
   fp2023-select-all:
     main:                Main.hs
@@ -68,6 +70,7 @@ executables:
     - aeson
     - bytestring 
     - text
+    - free
   fp2023-select-more:
     main:                Main.hs
     source-dirs:         app2
@@ -83,6 +86,7 @@ executables:
     - aeson
     - bytestring 
     - text
+    - free
   fp2023-manipulate:
     main:                Main.hs
     source-dirs:         app3
@@ -119,3 +123,4 @@ tests:
     - bytestring 
     - yaml
     - text
+    - free

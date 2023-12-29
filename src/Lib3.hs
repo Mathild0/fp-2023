@@ -13,9 +13,13 @@ module Lib3
     getTime,
     parseYAMLContent,
     currentTimeDataFrame,
-    executeNowStatement  
+    executeNowStatement,
+    runExecuteIO 
   )
 where
+import Data.Time
+import Data.Time (getCurrentTime)
+    
 import Debug.Trace   
 import qualified Data.ByteString as BS
 import qualified Data.Yaml as Yaml
@@ -556,3 +560,11 @@ readYamlFile filePath = do
             putStrLn $ "Error reading file: " ++ show err
             return Nothing
         Right tableData -> return $ Just tableData
+runExecuteIO :: Lib3.Execution r -> IO r
+runExecuteIO (Pure r) = return r
+runExecuteIO (Free step) = do
+    next <- runStep step
+    runExecuteIO next
+    where
+        runStep :: Lib3.ExecutionAlgebra a -> IO a
+        runStep (Lib3.GetTime next) = getCurrentTime >>= return . next
