@@ -1,12 +1,11 @@
 module Main (main) where
 
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Free (Free (..), liftF)
+import Control.Monad.Free (Free (..))
 
 import Data.Functor((<&>))
-import Data.Time (UTCTime, getCurrentTime)
+import Data.Time ( UTCTime, getCurrentTime )
 import Data.List qualified as L
-import InMemoryTables (database)
 import Lib1 qualified
 import Lib2 qualified
 import Lib3 qualified
@@ -18,10 +17,6 @@ import System.Console.Repline
     evalRepl,
   )
 import System.Console.Terminal.Size (Window, size, width)
-
-import System.FilePath ((</>), (<.>))
-import System.Directory (doesFileExist)
-import GHC.Read (readField)
 
 type Repl a = HaskelineT IO a
 
@@ -55,7 +50,7 @@ cmd c = do
     terminalWidth = maybe 80 width
     cmd' :: Integer -> IO (Either String String)
     cmd' s = do
-      df <- runExecuteIO $ Lib3.executeSql c
+      df <- runExecuteIO $ Lib3.executeSql c 
       return $ Lib1.renderDataFrameAsTable s <$> df
 
 main :: IO ()
@@ -70,17 +65,3 @@ runExecuteIO (Free step) = do
     where
         runStep :: Lib3.ExecutionAlgebra a -> IO a
         runStep (Lib3.GetTime next) = getCurrentTime >>= return . next
-        runStep (Lib3.LoadFiles tableNames next) = do
-          let tablePath = getFilePath tableNames
-          exists <- doesFileExist tablePath
-          if exists 
-            then next . Lib3.deserializeTable =<< readFile tablePath
-            else return $ next $ Left "Table/s does not exist."
-        runStep (Lib3.SaveTable (tableName, dataframe) next) = do
-          let yamlData = Lib3.serializeToYAML Lib3.serializeFile (tableName, dataframe)
-              filePath = getFilePath tableName
-          writeFile filePath yamlData
-          return next
-
-getFilePath :: String -> FilePath
-getFilePath tableName = "db" </> tableName <.> "yaml"

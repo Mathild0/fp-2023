@@ -1,6 +1,15 @@
-id:int
-name:string
-surname:string
----
-1, Vi, Po
-2, Ed, Dl
+tableName: "employees"
+columns:
+  - columnName: "id"
+    dataType: "int"
+  - columnName: "name"
+    dataType: "string"
+  - columnName: "surname"
+    dataType: "string"
+rows:
+  - - 1
+    - "Vi"
+    - "Po"
+  - - 2
+    - "Ed"
+    - "Dl"
