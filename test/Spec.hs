@@ -1,5 +1,8 @@
 {-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 {-# LANGUAGE BlockArguments #-}
+import Control.Monad.Free
+import Control.Monad.Free (Free(..))
+
 import Data.Either
 import Data.Either (isRight)
 import InMemoryTables qualified as D
@@ -10,7 +13,7 @@ import Lib3
 import DataFrame
 import qualified Data.ByteString as BS
 import qualified Data.Yaml as Yaml
-import qualified Lib3
+import qualified Lib3 (executeNowStatement)
 import Control.Monad.IO.Class (liftIO)
 import Data.Time (getCurrentTime, UTCTime)
 import Data.Time.Format (formatTime, defaultTimeLocale)
@@ -88,11 +91,11 @@ main = hspec $ do
 
   describe "Lib2.selectColumns" $ do
     it "handles an empty list of columns" $ do
-      let inputColumns = []  -- Pass an empty list of columns
+      let inputColumns = [] 
       let result = Lib2.selectColumns inputColumns (snd D.tableEmployees)
       case result of
         Right df -> do
-          let expectedDataFrame = snd D.tableEmployees  -- The result should be the same as the input DataFrame
+          let expectedDataFrame = snd D.tableEmployees 
           df `shouldBe` expectedDataFrame
         Left err -> expectationFailure ("Expected success but got an error: " ++ err)
 
@@ -159,5 +162,14 @@ main = hspec $ do
       employeesContent <- liftIO $ BS.readFile "db/employees.yaml"
       let result = Lib3.parseYAMLContent employeesContent
       result `shouldSatisfy` isRight
-  
-  
+
+  describe "executeNowStatement" $ do
+      it "returns the current UTC time as a string" $ do
+        result <- runExecuteIO Lib3.executeNowStatement
+        currentTime <- liftIO getCurrentTime
+        let formattedTime = formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" currentTime
+        case result of
+          Right (DataFrame _ [[StringValue resultTime]]) -> 
+            take 19 resultTime `shouldBe` formattedTime
+          _ -> 
+             expectationFailure "executeNowStatement did not return the expected DataFrame"
