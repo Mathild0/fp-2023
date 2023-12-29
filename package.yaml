@@ -21,7 +21,8 @@ description:         Please see the README on GitHub at <https://github.com/gith
 
 dependencies:
 - base >= 4.7 && < 5
-
+- bytestring
+- aeson
 default-extensions:
 - ImportQualifiedPost
 
@@ -42,7 +43,13 @@ library:
   - free
   - time
   - transformers
-
+  - text
+  - these
+  - filepath
+  - yaml
+  - directory
+  - aeson
+  - bytestring 
 executables:
   fp2023-select-all:
     main:                Main.hs
@@ -56,6 +63,8 @@ executables:
     - extra
     - repline
     - terminal-size
+    - aeson
+    - bytestring 
   fp2023-select-more:
     main:                Main.hs
     source-dirs:         app2
@@ -68,6 +77,8 @@ executables:
     - extra
     - repline
     - terminal-size
+    - aeson
+    - bytestring 
   fp2023-manipulate:
     main:                Main.hs
     source-dirs:         app3
@@ -82,7 +93,12 @@ executables:
     - terminal-size
     - free
     - time
-
+    - aeson
+    - yaml
+    - directory
+    - filepath
+    - aeson
+    - bytestring 
 tests:
   fp2023-test:
     main:                Spec.hs
@@ -94,3 +110,5 @@ tests:
     dependencies:
     - fp2023
     - hspec
+    - aeson
+    - bytestring 

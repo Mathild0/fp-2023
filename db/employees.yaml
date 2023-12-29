@@ -1,0 +1,15 @@
+tableName: "employees"
+columns:
+  - columnName: "id"
+    dataType: "int"
+  - columnName: "name"
+    dataType: "string"
+  - columnName: "surname"
+    dataType: "string"
+rows:
+  - - 1
+    - "Vi"
+    - "Po"
+  - - 2
+    - "Ed"
+    - "Dl"

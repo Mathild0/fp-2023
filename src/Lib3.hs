@@ -1,25 +1,36 @@
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Replace case with fromMaybe" #-}
+{-# HLINT ignore "Avoid lambda" #-}
 
 module Lib3
   ( executeSql,
     Execution,
-    ExecutionAlgebra(..)
+    ExecutionAlgebra(..),
+    loadFiles,
+    saveTable,
+    getTime,
+    parseYAMLContent
   )
 where
-
+import Debug.Trace   
+import qualified Data.ByteString as BS
+import qualified Data.Yaml as Yaml
+import qualified Data.Text.Encoding as TE
 import Control.Monad.Free (Free (..), liftF)
-import DataFrame (DataFrame(..), Column(..), ColumnType(..), Value(..))
-import InMemoryTables (database)
+import qualified Data.Yaml as Yaml
+import DataFrame (DataFrame(..), Column(..), ColumnType(..), Value(..), Row)
 import Data.Time (UTCTime)
-import qualified DataFrame as DF
-import Data.List (isInfixOf, isPrefixOf, tails, findIndex, find)
-import Data.Char (toLower)
+import Data.List (foldl', isInfixOf, isPrefixOf, tails, findIndex, find)
+import Data.Char (toLower, isDigit, isSpace)
 import Lib2 
-import Data.Maybe (fromMaybe)
-import Data.Maybe (catMaybes, fromJust)
-import Data.Char (isDigit, isSpace)
-import Data.List (foldl')
-
+import Data.Maybe (fromMaybe, catMaybes)
+import qualified Data.Text as T
+import Data.Text (Text)
+import GHC.Generics (Generic)
+import Data.Aeson (ToJSON, FromJSON) 
+import InMemoryTables (database)
 type TableName = String
 type FileContent = String
 type ErrorMessage = String
@@ -27,21 +38,22 @@ type Condition = String
 type JoinCondition = String
 
 data ExecutionAlgebra next
-  = LoadFile TableName (FileContent -> next)
+  = LoadFiles TableName (Either ErrorMessage (TableName, DataFrame) -> next)
+  | SaveFiles (TableName, DataFrame) (() -> next)
   | GetTime (UTCTime -> next)
   | DeleteRows TableName (Maybe Condition) (Either ErrorMessage DataFrame -> next)
   | JoinTables [TableName] JoinCondition (Either ErrorMessage DataFrame -> next)
   | InsertRow TableName Row (Either ErrorMessage DataFrame -> next)
   | UpdateTable TableName [(Lib2.ColumnName, Value)] (Maybe Condition) (Either ErrorMessage DataFrame -> next)
-  deriving Functor
+  deriving (Functor)
 
 type Execution = Free ExecutionAlgebra
-type Row = [Value]
-type ColumnName = String
-type ColumnValue = Value
 
-loadFile :: TableName -> Execution FileContent
-loadFile name = liftF $ LoadFile name id
+loadFiles :: TableName -> Execution (Either ErrorMessage (TableName, DataFrame))
+loadFiles tableNames = liftF $ LoadFiles tableNames id
+
+saveTable :: (TableName, DataFrame) -> Execution ()
+saveTable tableData = liftF $ SaveFiles tableData id
 
 getTime :: Execution UTCTime
 getTime = liftF $ GetTime id
@@ -93,9 +105,9 @@ executeInsertStatement sql = do
 
 executeUpdateStatement :: String -> Execution (Either ErrorMessage DataFrame)
 executeUpdateStatement sql = do
-    let updateStatement = parseUpdateStatement sql
-    case updateStatement of
-        Just (tableName, updates, maybeCondition) ->
+    let maybeUpdateStatement = parseUpdateStatement sql
+    case maybeUpdateStatement of
+        Just (tableName, updates, maybeCondition) -> 
             case findTableByName database tableName of
                 Just table -> do
                     let updatedTable = updateTable maybeCondition updates table
@@ -136,6 +148,7 @@ parseSelectClause sql =
         columnNames = wordsBy (==',') $ unwords selectClause
     in map parseColumn columnNames
 
+
 parseColumn :: String -> (Maybe TableName, Lib2.ColumnName)
 parseColumn column =
     case break (=='.') column of
@@ -145,11 +158,17 @@ parseColumn column =
 parseColumnValue :: String -> (Lib2.ColumnName, Value)
 parseColumnValue str =
     let (columnName, valueStr) = break (== '=') str
-    in (trim columnName, readValue $ trim $ drop 1 valueStr)
+        trimmedColumnName = trim columnName
+        trimmedValueStr = trim $ drop 1 valueStr 
+    in (trimmedColumnName, readValue trimmedValueStr)
 
-parseConditionPart :: [String] -> Maybe Condition
-parseConditionPart [] = Nothing
-parseConditionPart (_ : cond) = Just $ unwords cond
+parseConditionPart :: String -> Maybe Condition
+parseConditionPart sql =
+    let words' = words $ map toLower sql
+        conditionPart = dropWhile (/= "where") words'
+    in if null conditionPart
+       then Nothing
+       else Just $ unwords $ tail conditionPart
 
 parseCSV :: String -> [String]
 parseCSV input = go input False []
@@ -184,13 +203,29 @@ parseInsertStatement sql =
         _ -> Nothing
 
 parseUpdateStatement :: String -> Maybe (TableName, [(Lib2.ColumnName, Value)], Maybe Condition)
-parseUpdateStatement sql =
+parseUpdateStatement sql = 
     let words' = words $ map toLower sql
     in case words' of
         "update" : tableName : "set" : rest ->
-            let (columnValues, condition) = break (== "where") rest
-                parsedColumnValues = map parseColumnValue $ splitOn "," (unwords columnValues)
-            in Just (tableName, parsedColumnValues, parseConditionPart condition)
+            let (columnValues, conditionPart) = break (== "where") rest
+                parsedColumnValues = map parseColumnValue $ splitColumnValues $ unwords columnValues
+                parsedCondition = parseConditionPart $ unwords conditionPart
+            in Just (tableName, parsedColumnValues, parsedCondition)
+        _ -> Nothing
+
+splitColumnValues :: String -> [String]
+splitColumnValues = go False ""
+  where
+    go _ acc [] = [reverse acc]
+    go inQuotes acc (c:cs)
+      | c == ',' && not inQuotes = reverse acc : go inQuotes "" cs
+      | c == '\'' = go (not inQuotes) (c:acc) cs
+      | otherwise = go inQuotes (c:acc) cs
+
+parseUpdateCondition :: [String] -> Maybe Condition
+parseUpdateCondition conditionPart =
+    case conditionPart of
+        "where" : colName : "=" : value : _ -> Just (colName ++ " = " ++ value)
         _ -> Nothing
 
 parseJoinSelectStatement :: String -> Maybe ([TableName], JoinCondition)
@@ -264,11 +299,11 @@ getTableNamesInFromClause words' =
         _ -> []
 
 getColumnIndex :: Lib2.ColumnName -> [Column] -> Int
-getColumnIndex colName cols = 
-    fromMaybe (error "Column not found") $ findIndex (\(Column name _) -> name == colName) cols
+getColumnIndex colName columns =
+    fromMaybe (error "Column not found") $ findIndex (\(Column name _) -> name == colName) columns
 
 findMatch :: Row -> Int -> [Row] -> Int -> Maybe Row
-findMatch row1 col1Index rows2 col2Index = 
+findMatch row1 col1Index rows2 col2Index =
     find (\row2 -> row1 !! col1Index == row2 !! col2Index) rows2
 
 findColumnIndex :: String -> [Column] -> Int
@@ -279,12 +314,12 @@ findTableByName :: [(TableName, DataFrame)] -> TableName -> Maybe DataFrame
 findTableByName db name = lookup name db
 
 joinTables :: [(TableName, DataFrame)] -> JoinCondition -> Either ErrorMessage DataFrame
-joinTables database condition = 
+joinTables database condition =
     let ((table1Name, col1Name), (table2Name, col2Name)) = parseJoinCondition condition
         maybeTable1 = lookup table1Name database
         maybeTable2 = lookup table2Name database
     in case (maybeTable1, maybeTable2) of
-        (Just table1, Just table2) -> 
+        (Just table1, Just table2) ->
             Right $ joinDataFrames table1 col1Name table2 col2Name
         _ -> Left "One or both tables not found2"
 
@@ -293,7 +328,7 @@ joinDataFrames (DataFrame cols1 rows1) col1Name (DataFrame cols2 rows2) col2Name
     let col1Index = getColumnIndex col1Name cols1
         col2Index = getColumnIndex col2Name cols2
         combinedCols = cols1 ++ cols2  -- Include all columns from both tables
-        combinedRows = concatMap (\row1 -> 
+        combinedRows = concatMap (\row1 ->
                           case find (\row2 -> row2 !! col2Index == row1 !! col1Index) rows2 of
                             Just row2 -> [row1 ++ row2]  -- Include the entire row from the second table
                             Nothing -> [row1 ++ replicate (length cols2) (StringValue "NULL")])  -- Handle no match case
@@ -301,30 +336,33 @@ joinDataFrames (DataFrame cols1 rows1) col1Name (DataFrame cols2 rows2) col2Name
     in DataFrame combinedCols combinedRows
 
 matchesCondition :: Int -> Value -> Row -> Bool
-matchesCondition colIndex value row = 
+matchesCondition colIndex value row =
     case row !! colIndex of
         val -> val == value
 
-matchCondition :: Maybe Condition -> DataFrame -> Row -> Bool
+matchCondition :: Maybe Condition -> [Column] -> Row -> Bool
 matchCondition Nothing _ _ = True
-matchCondition (Just condStr) (DataFrame columns _) row =
-    let conditions = parseConditions condStr
-        colIndices = map (\(colName, _) -> findColumnIndex colName columns) conditions
-    in all (\((_, value), colIndex) -> row !! colIndex == value) $ zip conditions colIndices
+matchCondition (Just condStr) columns row =
+    let (colName, expectedValue) = parseCondition condStr
+        columnIndex = fromMaybe (error "Column not found") $ findIndex (\(Column name _) -> name == colName) columns
+        actualValue = row !! columnIndex
+    in actualValue == expectedValue
 
 trim :: String -> String
 trim = f . f where f = reverse . dropWhile isSpace
 
 trimQuotes :: String -> String
-trimQuotes str = 
+trimQuotes str =
     case str of
         ('\'':rest) | last rest == '\'' -> init rest
         _ -> str
 
 readValue :: String -> Value
-readValue str
-    | all isDigit $ filter (/= ' ') str = IntegerValue (read $ filter (/= ' ') str)
-    | otherwise = StringValue $ filter (/= '\"') $ trim str 
+readValue str =
+    let cleanedStr = trimQuotes $ trim str
+    in if all isDigit $ filter (/= ' ') cleanedStr
+       then IntegerValue (read $ filter (/= ' ') cleanedStr)
+       else StringValue cleanedStr
 
 splitOn :: Eq a => [a] -> [a] -> [[a]]
 splitOn _ [] = []
@@ -341,7 +379,7 @@ wordsBy p s =  case dropWhile p s of
                             where (w, s'') = break p s'
 
 multipleTablesInvolved :: String -> Bool
-multipleTablesInvolved sql = 
+multipleTablesInvolved sql =
     let tableNames = getTableNamesInFromClause $ words $ map toLower sql
     in length tableNames > 1
 
@@ -354,11 +392,13 @@ deleteRowsFromTable (Just cond) (DataFrame cols rows) =
     let (colName, valueToDelete) = parseCondition cond
         colIndex = findColumnIndex colName cols
         filteredRows = filter (\row -> not $ matchesCondition colIndex valueToDelete row) rows
+
     in DataFrame cols filteredRows
 
 insertRowIntoTable :: Row -> DataFrame -> DataFrame
 insertRowIntoTable row (DataFrame columns rows) =
     DataFrame columns (rows ++ [row])
+
 
 currentTimeDataFrame :: UTCTime -> DataFrame 
 currentTimeDataFrame currentTime =
@@ -366,27 +406,151 @@ currentTimeDataFrame currentTime =
 
 updateTable :: Maybe Condition -> [(Lib2.ColumnName, Value)] -> DataFrame -> DataFrame
 updateTable maybeCondition updates (DataFrame columns rows) =
-    let colIndices = map (\(colName, _) -> findColumnIndex colName columns) updates
-        newValues = map snd updates
-        updatedRows = map (\row -> if matchCondition maybeCondition (DataFrame columns rows) row
-                                  then updateRow colIndices newValues row
-                                  else row) rows
-    in DataFrame columns updatedRows
+    DataFrame columns (map (updateRowIfNeeded maybeCondition updates columns) rows)
 
-updateRow :: [Int] -> [Value] -> Row -> Row
-updateRow colIndices newValues row =
-    foldl' (\r (index, newValue) -> updateValueAtIndex index newValue r) row (zip colIndices newValues)
+updateRowIfNeeded :: Maybe Condition -> [(Lib2.ColumnName, Value)] -> [Column] -> Row -> Row
+updateRowIfNeeded maybeCondition updates columns row =
+    if matchCondition maybeCondition columns row
+        then applyUpdates updates columns row
+        else row
 
-updateValueInRow :: Row -> (Int, Value) -> Row
-updateValueInRow row (index, newValue) = 
-    take index row ++ [newValue] ++ drop (index + 1) row
+applyUpdates :: [(Lib2.ColumnName, Value)] -> [Column] -> Row -> Row
+applyUpdates updates columns row = foldl' (updateValueInRow columns) row updates
+
+updateRow :: [(Lib2.ColumnName, Value)] -> [Column] -> Row -> Row
+updateRow updates columns row = 
+    let columnIndices = map (\(Column name _) -> name) columns `zip` [0..]
+        indexedUpdates = catMaybes $ map (\(colName, newVal) -> fmap (\idx -> (idx, newVal)) (lookup colName columnIndices)) updates
+    in foldl' applyUpdate row indexedUpdates
+    where
+        applyUpdate r (idx, newVal) = 
+            let updatedRow = take idx r ++ [newVal] ++ drop (idx + 1) r
+            in trace ("Updating row at index " ++ show idx ++ ": " ++ show r ++ " to " ++ show updatedRow) updatedRow
+            
+updateValueInRow :: [Column] -> Row -> (Lib2.ColumnName, Value) -> Row
+updateValueInRow columns row (colName, newVal) =
+    let colIndex = getColumnIndex colName columns
+    in take colIndex row ++ [newVal] ++ drop (colIndex + 1) row
 
 updateValueAtIndex :: Int -> Value -> [Value] -> [Value]
-updateValueAtIndex idx newVal row = 
+updateValueAtIndex idx newVal row =
     take idx row ++ [newVal] ++ drop (idx + 1) row
 
 findUpdate :: Int -> Value -> [(Lib2.ColumnName, Int)] -> [(Lib2.ColumnName, Value)] -> Value
-findUpdate colIdx val colNamesIndices updates = 
+findUpdate colIdx val colNamesIndices updates =
     case lookup colIdx (map (\(name, idx) -> (idx, fromMaybe val (lookup name updates))) colNamesIndices) of
         Just newVal -> newVal
         Nothing -> val
+
+-----------------------------------------------------------------------------------------------------------
+data SerializedTable = SerializedTable {
+    tableName :: TableName,
+    columns :: [SerializedColumn],
+    rows :: [[Yaml.Value]]
+} deriving (Show, Eq, Generic)
+
+instance ToJSON SerializedTable
+instance FromJSON SerializedTable
+
+data SerializedColumn = SerializedColumn {
+    columnName :: String,
+    dataType :: String
+} deriving (Show, Eq, Generic)
+
+instance ToJSON SerializedColumn
+instance FromJSON SerializedColumn
+
+columnToSerializedColumn :: Column -> SerializedColumn
+columnToSerializedColumn (Column colName colType) = SerializedColumn colName (show colType)
+
+
+serializeFile :: (TableName, DataFrame) -> SerializedTable
+serializeFile (tableName, DataFrame columns dataRows) =
+  SerializedTable {
+    tableName = tableName,
+    columns = map columnToSerializedColumn columns,
+    rows = map rowToYamlValues dataRows
+  }
+
+
+serializedRowToRow :: [Yaml.Value] -> Row
+serializedRowToRow = map yamlValueToValue
+
+-- Fixing yamlValueToValue Function
+yamlValueToValue :: Yaml.Value -> Value
+yamlValueToValue (Yaml.String s) = StringValue (T.unpack s) -- Change here
+yamlValueToValue (Yaml.Number n) = IntegerValue (round n)
+yamlValueToValue (Yaml.Bool b)   = BoolValue b
+yamlValueToValue Yaml.Null       = NullValue
+yamlValueToValue _               = error "Unsupported Yaml value type"
+
+-- Conversion logic
+serializedTableToDataFrame :: SerializedTable -> DataFrame
+serializedTableToDataFrame (SerializedTable _ serializedColumns serializedRows) =
+    let columns = map serializedColumnToColumn serializedColumns
+        rows = map serializedRowToRow serializedRows
+    in DataFrame columns rows
+
+-- Helper function to convert a SerializedColumn to a Column
+serializedColumnToColumn :: SerializedColumn -> Column
+serializedColumnToColumn (SerializedColumn colName colType) =
+    Column colName (stringToColumnType colType)
+
+-- Helper function to convert column type from String to ColumnType
+stringToColumnType :: String -> ColumnType
+stringToColumnType "int" = IntegerType
+stringToColumnType "string" = StringType
+stringToColumnType "bool" = BoolType
+stringToColumnType _ = error "Unsupported column type"
+
+
+initDatabase :: [FilePath] -> IO [(TableName, DataFrame)]
+initDatabase filePaths = do
+    tables <- mapM readYamlFile filePaths
+    let dataFrames = catMaybes tables
+    return $ map (\table -> (tableName table, serializedTableToDataFrame table)) dataFrames
+
+serializeToYAML :: SerializedTable -> T.Text
+serializeToYAML st =
+    T.unlines
+       [ T.pack "table name: " <> T.pack (tableName st),
+         T.pack "columns: ",
+         T.unlines (map serializeColumn (columns st)),
+         T.pack "rows: ",
+         T.unlines (map serializeRow (rows st))
+       ]
+    where
+        serializeColumn :: SerializedColumn -> T.Text
+        serializeColumn col =
+           T.pack "- column name: " <> T.pack (columnName col)
+
+serializeRow :: [Yaml.Value] -> T.Text
+serializeRow rowValues = T.intercalate (T.pack ", ") (map yamlValueToText rowValues)
+
+yamlValueToText :: Yaml.Value -> T.Text
+yamlValueToText (Yaml.String s) = s
+yamlValueToText (Yaml.Number n) = T.pack (show n)
+yamlValueToText (Yaml.Bool b)   = T.pack (show b)
+yamlValueToText Yaml.Null       = T.pack "NULL"
+yamlValueToText _               = error "Unsupported Yaml value type"
+
+rowToYamlValues :: Row -> [Yaml.Value]
+rowToYamlValues = map valueToYamlValue
+
+valueToYamlValue :: Value -> Yaml.Value
+valueToYamlValue (StringValue s) = Yaml.String (T.pack s)
+valueToYamlValue (IntegerValue n) = Yaml.Number (fromIntegral n)
+valueToYamlValue (BoolValue b) = Yaml.Bool b
+
+parseYAMLContent :: BS.ByteString -> Either Yaml.ParseException SerializedTable
+parseYAMLContent = Yaml.decodeEither'
+
+
+readYamlFile :: FilePath -> IO (Maybe SerializedTable)
+readYamlFile filePath = do
+    eitherData <- Yaml.decodeFileEither filePath
+    case eitherData of
+        Left err -> do
+            putStrLn $ "Error reading file: " ++ show err
+            return Nothing
+        Right tableData -> return $ Just tableData
