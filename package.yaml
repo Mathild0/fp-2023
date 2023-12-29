@@ -23,6 +23,8 @@ dependencies:
 - base >= 4.7 && < 5
 - bytestring
 - aeson
+- text
+- time
 default-extensions:
 - ImportQualifiedPost
 
@@ -65,6 +67,7 @@ executables:
     - terminal-size
     - aeson
     - bytestring 
+    - text
   fp2023-select-more:
     main:                Main.hs
     source-dirs:         app2
@@ -79,6 +82,7 @@ executables:
     - terminal-size
     - aeson
     - bytestring 
+    - text
   fp2023-manipulate:
     main:                Main.hs
     source-dirs:         app3
@@ -99,6 +103,7 @@ executables:
     - filepath
     - aeson
     - bytestring 
+    - text
 tests:
   fp2023-test:
     main:                Spec.hs
@@ -112,3 +117,5 @@ tests:
     - hspec
     - aeson
     - bytestring 
+    - yaml
+    - text
